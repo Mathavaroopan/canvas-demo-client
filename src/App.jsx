@@ -2,12 +2,13 @@ import React from "react";
 import VideoPlayer from "./VideoPlayer";
 
 export default function App() {
-  const videoUrl = "http://localhost:8000/output.m3u8";
+  const originalUrl = "http://localhost:8000/output.m3u8";
+  const blackoutUrl = "http://localhost:8000/blackout.m3u8";
 
   return (
     <div>
       <h1>Video Player</h1>
-      <VideoPlayer src={videoUrl} />
+      <VideoPlayer originalUrl={originalUrl} blackoutUrl={blackoutUrl} />
     </div>
   );
 }
