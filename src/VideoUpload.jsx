@@ -43,7 +43,7 @@ const VideoUpload = () => {
     formData.append("blackoutLocks", JSON.stringify(blackoutLocks));
 
     try {
-      const response = await axios.post("http://localhost:3000/create-lock", formData, {
+      const response = await axios.post("http://localhost:3000/api/create-lock", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         responseType: "json",
       });
