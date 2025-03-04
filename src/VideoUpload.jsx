@@ -1,39 +1,40 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
-const VideoUpload = () => {
+export default function VideoUpload() {
   const [videoFile, setVideoFile] = useState(null);
   const [platformId, setPlatformId] = useState(""); 
   const [userId, setUserId] = useState("");
   const [contentId, setContentId] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
+  const [folderUrl, setFolderUrl] = useState(null);
+  const navigate = useNavigate();
 
-  // Handle Video Upload
+  // Handle video file selection
   const handleVideoUpload = (e) => {
     setVideoFile(e.target.files[0]);
   };
 
-  // Handle Blackout Lock Addition
+  // Add a new blackout lock field
   const handleAddBlackoutLock = () => {
     setBlackoutLocks([...blackoutLocks, { startTime: "", endTime: "" }]);
   };
 
-  // Handle Blackout Lock Change
+  // Update blackout lock field values
   const handleBlackoutLockChange = (index, key, value) => {
     const newLocks = [...blackoutLocks];
     newLocks[index][key] = value;
     setBlackoutLocks(newLocks);
   };
 
-  // Handle Form Submission
+  // Submit the form to process the video
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!videoFile || !platformId || !userId || !contentId) {
       alert("Please fill in all required fields and upload a video.");
       return;
     }
-
     const formData = new FormData();
     formData.append("video", videoFile);
     formData.append("platformId", platformId);
@@ -41,74 +42,87 @@ const VideoUpload = () => {
     formData.append("contentId", contentId);
     formData.append("contentUrl", URL.createObjectURL(videoFile));
     formData.append("blackoutLocks", JSON.stringify(blackoutLocks));
-
     try {
-      const response = await axios.post("http://localhost:3000/api/create-lock", formData, {
+      const response = await axios.post("http://localhost:3000/create-lock", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        responseType: "json",
       });
-
       if (response.status !== 201) {
         throw new Error(`Upload failed: ${response.statusText}`);
       }
-
       alert("Video processing completed! Lock created successfully.");
       console.log("Server Response:", response.data);
+      // Save the returned folder URL from the Lock document
+      setFolderUrl(response.data.lock.FolderUrl);
     } catch (error) {
       console.error("Error uploading:", error);
       alert("Failed to process the video. Please try again.");
     }
   };
 
+  // When folderUrl is available, show the preview button which navigates to /preview.
+  const handlePreview = () => {
+    if (folderUrl) {
+      navigate("/preview", { state: { folderUrl } });
+    }
+  };
+
   return (
     <div style={styles.container}>
       <h2>📤 Upload Video</h2>
-      <input type="file" onChange={handleVideoUpload} />
-
-      <h3>🔹 Enter Platform ID, User ID & Content ID</h3>
-      <input
-        type="text"
-        placeholder="Platform ID"
-        value={platformId}
-        onChange={(e) => setPlatformId(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="User ID"
-        value={userId}
-        onChange={(e) => setUserId(e.target.value)}
-      />
-      <input
-        type="text"
-        placeholder="Content ID"
-        value={contentId}
-        onChange={(e) => setContentId(e.target.value)}
-      />
-
-      {/* BLACKOUT LOCK SECTION */}
-      <h3>🎥 Blackout Locks</h3>
-      {blackoutLocks.map((lock, index) => (
-        <div key={index} style={styles.lockContainer}>
-          <input
-            type="number"
-            placeholder="Start Time"
-            value={lock.startTime}
-            onChange={(e) => handleBlackoutLockChange(index, "startTime", e.target.value)}
-          />
-          <input
-            type="number"
-            placeholder="End Time"
-            value={lock.endTime}
-            onChange={(e) => handleBlackoutLockChange(index, "endTime", e.target.value)}
-          />
+      <form onSubmit={handleSubmit}>
+        <input type="file" onChange={handleVideoUpload} />
+        <input
+          type="text"
+          placeholder="Platform ID"
+          value={platformId}
+          onChange={(e) => setPlatformId(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="User ID"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+        />
+        <input
+          type="text"
+          placeholder="Content ID"
+          value={contentId}
+          onChange={(e) => setContentId(e.target.value)}
+        />
+        <h3>🎥 Blackout Locks</h3>
+        {blackoutLocks.map((lock, index) => (
+          <div key={index} style={styles.lockContainer}>
+            <input
+              type="number"
+              placeholder="Start Time (sec)"
+              value={lock.startTime}
+              onChange={(e) => handleBlackoutLockChange(index, "startTime", e.target.value)}
+            />
+            <input
+              type="number"
+              placeholder="End Time (sec)"
+              value={lock.endTime}
+              onChange={(e) => handleBlackoutLockChange(index, "endTime", e.target.value)}
+            />
+          </div>
+        ))}
+        <button type="button" onClick={handleAddBlackoutLock} style={styles.addButton}>
+          ➕ Add Blackout Lock
+        </button>
+        <button type="submit" style={styles.submitButton}>
+          🚀 Process Video
+        </button>
+      </form>
+      {folderUrl && (
+        <div style={{ marginTop: "20px" }}>
+          <button onClick={handlePreview} style={styles.previewButton}>
+            Preview Video
+          </button>
         </div>
-      ))}
-      <button onClick={handleAddBlackoutLock} style={styles.addButton}>➕ Add Blackout Lock</button>
-
-      <button onClick={handleSubmit} style={styles.submitButton}>🚀 Process Video</button>
+      )}
     </div>
   );
-};
+}
 
 const styles = {
   container: {
@@ -143,6 +157,14 @@ const styles = {
     cursor: "pointer",
     fontSize: "16px",
   },
+  previewButton: {
+    backgroundColor: "#FFA500",
+    color: "white",
+    border: "none",
+    padding: "10px 20px",
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontSize: "16px",
+  },
 };
 
-export default VideoUpload;
