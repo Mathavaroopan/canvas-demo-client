@@ -4,21 +4,18 @@ import Hls from "hls.js";
 export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
-
-  // State for playlist segments and playback control
   const [segments, setSegments] = useState([]);
   const [playlistLoaded, setPlaylistLoaded] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentManifest, setCurrentManifest] = useState("original");
   const [showOverlay, setShowOverlay] = useState(false);
 
-  // Fetch and parse the blackout playlist to determine segment boundaries.
   useEffect(() => {
     async function fetchPlaylists() {
       try {
         const resBlackout = await fetch(blackoutUrl);
         const textBlackout = await resBlackout.text();
-        const lines = textBlackout.split("\n").map((line) => line.trim());
+        const lines = textBlackout.split("\n").map(line => line.trim());
         let segs = [];
         let cumTime = 0;
         for (let i = 0; i < lines.length; i++) {
@@ -28,7 +25,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
             const type = file.startsWith("blackout") ? "blackout" : "normal";
             segs.push({ duration, type, startTime: cumTime, endTime: cumTime + duration });
             cumTime += duration;
-            i++; // Skip filename line
+            i++;
           }
         }
         setSegments(segs);
@@ -40,7 +37,6 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     fetchPlaylists();
   }, [blackoutUrl]);
 
-  // Initialize HLS playback starting at a given time.
   const initHls = (manifestUrl, startTime) => {
     return new Promise((resolve) => {
       const video = videoRef.current;
@@ -48,7 +44,6 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
         resolve();
         return;
       }
-      // Destroy any existing HLS instance.
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -96,7 +91,6 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     });
   };
 
-  // When the playlist is loaded, start playback using the original manifest.
   useEffect(() => {
     if (playlistLoaded && segments.length > 0) {
       initHls(originalUrl, 0);
@@ -105,16 +99,13 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     }
   }, [playlistLoaded, segments, originalUrl]);
 
-  // Monitor video playback and pause to prompt user when a blackout segment is near.
   useEffect(() => {
     const video = videoRef.current;
     if (!video || segments.length === 0) return;
-
     const handleTimeUpdate = () => {
       const currentTime = video.currentTime;
       const currentSeg = segments[currentSegmentIndex];
       if (!currentSeg) return;
-
       if (currentTime >= currentSeg.endTime - 0.25) {
         const nextIndex = currentSegmentIndex + 1;
         if (nextIndex < segments.length) {
@@ -132,12 +123,10 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
         }
       }
     };
-
     video.addEventListener("timeupdate", handleTimeUpdate);
     return () => video.removeEventListener("timeupdate", handleTimeUpdate);
   }, [segments, currentSegmentIndex, currentManifest, originalUrl]);
 
-  // Handle the user's choice when a blackout segment is upcoming.
   const handleChoice = async (choice) => {
     const nextIndex = currentSegmentIndex + 1;
     if (nextIndex >= segments.length) return;
@@ -154,8 +143,8 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   };
 
   return (
-    <div style={{ position: "relative", maxWidth: 640, margin: "0 auto" }}>
-      <video ref={videoRef} controls style={{ width: "100%", backgroundColor: "#000" }} />
+    <div style={{ position: "relative", width: "100%", height: "100vh", background: "#000" }}>
+      <video ref={videoRef} controls style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       {showOverlay && (
         <div
           style={{
@@ -164,22 +153,22 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
             left: 0,
             width: "100%",
             height: "100%",
-            backgroundColor: "rgba(0,0,0,0.8)",
+            backgroundColor: "rgba(0,0,0,0.7)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 10,
+            zIndex: 20,
             color: "#fff",
           }}
         >
-          <h2>Upcoming blackout segment</h2>
-          <p>Please choose how to continue:</p>
+          <h2 style={{ fontSize: "32px", marginBottom: "20px" }}>Upcoming Blackout</h2>
+          <p style={{ fontSize: "20px", marginBottom: "30px" }}>Choose how to continue:</p>
           <div>
-            <button onClick={() => handleChoice("lock")} style={{ margin: "0 10px", padding: "10px 20px" }}>
+            <button onClick={() => handleChoice("lock")} style={styles.choiceButton}>
               Lock (Blackout)
             </button>
-            <button onClick={() => handleChoice("original")} style={{ margin: "0 10px", padding: "10px 20px" }}>
+            <button onClick={() => handleChoice("original")} style={styles.choiceButton}>
               Original
             </button>
           </div>
@@ -188,3 +177,18 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     </div>
   );
 }
+
+const styles = {
+  choiceButton: {
+    margin: "0 10px",
+    padding: "15px 30px",
+    fontSize: "20px",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    backgroundColor: "#ff5722",
+    color: "#fff",
+    transition: "background-color 0.3s ease",
+  },
+};
+

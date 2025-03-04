@@ -2,13 +2,13 @@ import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import axios from "axios";
 import VideoPlayer from "./VideoPlayer";
+import NavBar from "./NavBar";
 
 export default function VideoPreview() {
   const location = useLocation();
   const { folderUrl } = location.state || {};
   const [downloadStatus, setDownloadStatus] = useState("Downloading HLS files...");
   const [previewReady, setPreviewReady] = useState(false);
-  // These URLs assume that your express static server serves the local hls_output folder.
   const [originalUrl, setOriginalUrl] = useState("");
   const [blackoutUrl, setBlackoutUrl] = useState("");
 
@@ -19,12 +19,20 @@ export default function VideoPreview() {
           setDownloadStatus("No folder URL provided.");
           return;
         }
-        // Extract submissionId from folderUrl. For example, if folderUrl is "https://bucket.s3.amazonaws.com/submissionId/"
-        const parts = folderUrl.split("/");
-        const submissionId = parts[parts.length - 2];
+        // Extract folder prefix from folderUrl.
+        let folderPrefix;
+        if (folderUrl.includes("amazonaws.com/")) {
+          const parts = folderUrl.split("amazonaws.com/");
+          folderPrefix = parts[1];
+        } else {
+          folderPrefix = folderUrl;
+        }
+        if (!folderPrefix.endsWith("/")) {
+          folderPrefix += "/";
+        }
         // Call the download-folder API.
-        await axios.get(`http://localhost:3000/download-folder?folderPrefix=${submissionId}/`);
-        // After download, assume that your express static server is serving from the local hls_output folder.
+        await axios.get(`http://localhost:3000/download-folder?folderPrefix=${folderPrefix}`);
+        // After download, assume that the express static server is serving files from the local hls_output folder.
         setOriginalUrl("http://localhost:3000/output.m3u8");
         setBlackoutUrl("http://localhost:3000/blackout.m3u8");
         setDownloadStatus("Download complete. Preview ready.");
@@ -38,12 +46,35 @@ export default function VideoPreview() {
   }, [folderUrl]);
 
   return (
-    <div style={{ width: "60%", margin: "auto", padding: "20px" }}>
-      <h1>Video Preview</h1>
-      <p>{downloadStatus}</p>
-      {previewReady && (
-        <VideoPlayer originalUrl={originalUrl} blackoutUrl={blackoutUrl} />
-      )}
+    <div>
+      <NavBar />
+      <div style={styles.container}>
+        <h1 style={styles.heading}>Video Preview</h1>
+        <p style={styles.status}>{downloadStatus}</p>
+        {previewReady && (
+          <VideoPlayer originalUrl={originalUrl} blackoutUrl={blackoutUrl} />
+        )}
+      </div>
     </div>
   );
 }
+
+const styles = {
+  container: {
+    width: "80%",
+    margin: "40px auto",
+    padding: "30px",
+    background: "#ffffff",
+    borderRadius: "8px",
+    boxShadow: "0 4px 10px rgba(0,0,0,0.15)",
+    textAlign: "center",
+  },
+  heading: {
+    fontSize: "36px",
+    marginBottom: "20px",
+  },
+  status: {
+    fontSize: "18px",
+    marginBottom: "30px",
+  },
+};
