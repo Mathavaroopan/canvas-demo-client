@@ -15,10 +15,11 @@ export default function VideoUpload() {
   const [folderUrl, setFolderUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  axios.defaults.withCredentials = true;
 
   // Fetch existing folder names when component mounts.
   useEffect(() => {
-    axios.get("http://localhost:3000/get-folder-names")
+    axios.get(`${process.env.VITE_API_URL}/get-folder-names`)
       .then((res) => {
         setExistingFolders(res.data.folders || []);
       })

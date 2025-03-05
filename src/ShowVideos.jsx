@@ -7,11 +7,11 @@ export default function ShowVideos() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-
+  axios.defaults.withCredentials = true;
   useEffect(() => {
     async function fetchFolders() {
       try {
-        const response = await axios.get("http://localhost:3000/get-folder-names");
+        const response = await axios.get(`${process.env.VITE_API_URL}/get-folder-names`);
         setFolders(response.data.folders || []);
       } catch (error) {
         console.error("Error fetching folders:", error);

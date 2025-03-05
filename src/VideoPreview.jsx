@@ -11,6 +11,7 @@ export default function VideoPreview() {
   const [previewReady, setPreviewReady] = useState(false);
   const [originalUrl, setOriginalUrl] = useState("");
   const [blackoutUrl, setBlackoutUrl] = useState("");
+  axios.defaults.withCredentials = true;
 
   useEffect(() => {
     async function downloadFolder() {
@@ -31,10 +32,10 @@ export default function VideoPreview() {
           folderPrefix += "/";
         }
         // Call the download-folder API.
-        await axios.get(`http://localhost:3000/download-folder?folderPrefix=${folderPrefix}`);
+        await axios.get(`${process.env.VITE_API_URL}/download-folder?folderPrefix=${folderPrefix}`);
         // After download, assume that the express static server is serving files from the local hls_output folder.
-        setOriginalUrl("http://localhost:3000/output.m3u8");
-        setBlackoutUrl("http://localhost:3000/blackout.m3u8");
+        setOriginalUrl(`${process.env.VITE_API_URL}/output.m3u8`);
+        setBlackoutUrl(`${process.env.VITE_API_URL}/blackout.m3u8`);
         setDownloadStatus("Download complete. Preview ready.");
         setPreviewReady(true);
       } catch (error) {
