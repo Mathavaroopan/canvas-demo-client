@@ -79,7 +79,7 @@ export default function VideoUpload() {
     formData.append("folderName", folderName);
 
     try {
-      const response = await axios.post("http://localhost:3000/create-lock", formData, {
+      const response = await axios.post(`${process.env.VITE_API_URL}/create-lock`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       
