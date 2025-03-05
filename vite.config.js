@@ -5,12 +5,12 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "react-router-dom": require.resolve("react-router-dom"),
+      "react-router-dom": "/node_modules/react-router-dom/",
     },
   },
   build: {
     rollupOptions: {
       external: ["react-router-dom"],
     },
-  }
+  },
 });
