@@ -11,7 +11,8 @@ export default function ShowVideos() {
   useEffect(() => {
     async function fetchFolders() {
       try {
-        const response = await axios.get(`${process.env.VITE_API_URL}/get-folder-names`);
+        const response = await axios.get(`${import.meta.env.VITE_API_URL}/get-folder-names`, { withCredentials: true });;
+        console.log("vite: " + import.meta.env.VITE_API_URL);
         setFolders(response.data.folders || []);
       } catch (error) {
         console.error("Error fetching folders:", error);

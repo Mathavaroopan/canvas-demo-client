@@ -19,7 +19,7 @@ export default function VideoUpload() {
 
   // Fetch existing folder names when component mounts.
   useEffect(() => {
-    axios.get(`${process.env.VITE_API_URL}/get-folder-names`)
+    axios.get(`${import.meta.env.VITE_API_URL}/get-folder-names`, { withCredentials: true })
       .then((res) => {
         setExistingFolders(res.data.folders || []);
       })
@@ -79,12 +79,12 @@ export default function VideoUpload() {
     formData.append("folderName", folderName);
 
     try {
-      const response = await axios.post(`${process.env.VITE_API_URL}/create-lock`, formData, {
+      const response = await axios.post(`${import.meta.env.VITE_API_URL}/create-lock`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       
       if (response.status !== 201) {
-        throw new Error(`Upload failed: ${response.statusText}`);
+        throw new Error(`Upload failed: ${response.statusText}`, { withCredentials: true });;
       }
       
       alert("Video processing completed! Lock created successfully.");

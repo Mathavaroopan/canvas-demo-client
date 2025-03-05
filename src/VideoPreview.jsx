@@ -32,10 +32,10 @@ export default function VideoPreview() {
           folderPrefix += "/";
         }
         // Call the download-folder API.
-        await axios.get(`${process.env.VITE_API_URL}/download-folder?folderPrefix=${folderPrefix}`);
+        await axios.get(`${import.meta.env.VITE_API_URL}/download-folder?folderPrefix=${folderPrefix}`, { withCredentials: true });
         // After download, assume that the express static server is serving files from the local hls_output folder.
-        setOriginalUrl(`${process.env.VITE_API_URL}/output.m3u8`);
-        setBlackoutUrl(`${process.env.VITE_API_URL}/blackout.m3u8`);
+        setOriginalUrl(`${import.meta.env.VITE_API_URL}/output.m3u8`, { withCredentials: true });;
+        setBlackoutUrl(`${import.meta.env.VITE_API_URL}/blackout.m3u8`, { withCredentials: true });;
         setDownloadStatus("Download complete. Preview ready.");
         setPreviewReady(true);
       } catch (error) {
