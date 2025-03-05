@@ -8,4 +8,9 @@ export default defineConfig({
       "react-router-dom": require.resolve("react-router-dom"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: ["react-router-dom"],
+    },
+  }
 });
