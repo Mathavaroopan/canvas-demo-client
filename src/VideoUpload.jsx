@@ -9,31 +9,9 @@ export default function VideoUpload() {
   const [userId, setUserId] = useState("");
   const [contentId, setContentId] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
-  const [folderName, setFolderName] = useState("");
-  const [existingFolders, setExistingFolders] = useState([]);
-  const [folderNameExists, setFolderNameExists] = useState(false);
-  const [folderUrl, setFolderUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   axios.defaults.withCredentials = true;
-
-  // Fetch existing folder names when component mounts.
-  useEffect(() => {
-    axios.get(`${import.meta.env.VITE_API_URL}/get-folder-names`, { withCredentials: true })
-      .then((res) => {
-        setExistingFolders(res.data.folders || []);
-      })
-      .catch((err) => {
-        console.error("Error fetching folder names:", err);
-      });
-  }, []);
-
-  // Validate folder name as user types.
-  useEffect(() => {
-    const trimmed = folderName.trim();
-    const exists = existingFolders.some(f => f.toLowerCase() === (trimmed + "/").toLowerCase());
-    setFolderNameExists(exists);
-  }, [folderName, existingFolders]);
 
   const handleVideoUpload = (e) => {
     setVideoFile(e.target.files[0]);
@@ -62,10 +40,6 @@ export default function VideoUpload() {
       alert("Please fill in all required fields and upload a video.");
       return;
     }
-    if (folderNameExists) {
-      alert("Folder name already exists. Please choose a different folder name.");
-      return;
-    }
 
     setIsLoading(true);
     
@@ -76,7 +50,6 @@ export default function VideoUpload() {
     formData.append("contentId", contentId);
     formData.append("contentUrl", URL.createObjectURL(videoFile));
     formData.append("blackoutLocks", JSON.stringify(blackoutLocks));
-    formData.append("folderName", folderName);
 
     try {
       const response = await axios.post(`${import.meta.env.VITE_API_URL}/create-lock`, formData, {
@@ -89,21 +62,12 @@ export default function VideoUpload() {
       
       alert("Video processing completed! Lock created successfully.");
       console.log("Server Response:", response.data);
-      setFolderUrl(response.data.lock.FolderUrl);
       setIsLoading(false);
     } catch (error) {
       console.error("Error uploading:", error);
       alert("Failed to process the video. Please try again.");
       setIsLoading(false);
     }
-  };
-
-  const handlePreview = () => {
-    if (!folderUrl) {
-      alert("No folder URL available for preview.");
-      return;
-    }
-    navigate('/preview', { state: { folderUrl } });
   };
 
   return (
@@ -146,19 +110,6 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Folder Name (optional):</label>
-            <input
-              type="text"
-              placeholder="Folder Name"
-              value={folderName}
-              onChange={(e) => setFolderName(e.target.value)}
-              style={styles.input}
-            />
-            {folderName && folderNameExists && (
-              <p style={{ color: "red" }}>Folder name already exists. Choose another.</p>
-            )}
-          </div>
           <h3 style={styles.subheading}>Blackout Locks</h3>
           {blackoutLocks.map((lock, index) => (
             <div key={index} style={styles.lockContainer}>
@@ -192,13 +143,6 @@ export default function VideoUpload() {
             {isLoading ? "Processing..." : "🚀 Process Video"}
           </button>
         </form>
-        {folderUrl && (
-          <div style={styles.previewContainer}>
-            <button onClick={handlePreview} style={styles.previewButton}>
-              👁️ Preview Video
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -274,19 +218,5 @@ const styles = {
     cursor: "pointer",
     fontSize: "18px",
     width: "100%",
-  },
-  previewContainer: {
-    marginTop: "30px",
-    textAlign: "center",
-  },
-  previewButton: {
-    backgroundColor: "#9c27b0",
-    color: "#fff",
-    border: "none",
-    padding: "15px 30px",
-    borderRadius: "5px",
-    cursor: "pointer",
-    fontSize: "18px",
-  },
+  }
 };
-

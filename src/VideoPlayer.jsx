@@ -9,7 +9,8 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentManifest, setCurrentManifest] = useState("original");
   const [showOverlay, setShowOverlay] = useState(false);
-  const [wasFullScreen, setWasFullScreen] = useState(false); // Track full-screen state
+  const [wasFullScreen, setWasFullScreen] = useState(false);
+  const [lastSeekTime, setLastSeekTime] = useState(0);
 
   useEffect(() => {
     async function fetchPlaylists() {
@@ -108,20 +109,19 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || segments.length === 0) return;
-    
+
     const handleTimeUpdate = () => {
       const currentTime = video.currentTime;
       const currentSeg = segments[currentSegmentIndex];
       if (!currentSeg) return;
-      
+
       if (currentTime >= currentSeg.endTime - 0.25) {
         const nextIndex = currentSegmentIndex + 1;
         if (nextIndex < segments.length) {
           const nextSeg = segments[nextIndex];
 
-          // Detect full-screen mode before blackout
           if (nextSeg.type === "blackout") {
-            setWasFullScreen(document.fullscreenElement !== null); // Store fullscreen state
+            setWasFullScreen(document.fullscreenElement !== null);
             if (document.fullscreenElement) {
               document.exitFullscreen().catch((err) => console.warn("Exit full-screen error:", err));
             }
@@ -138,9 +138,30 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
       }
     };
 
+    const handleSeeking = () => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      const seekTime = video.currentTime;
+      console.log(`User seeking to: ${seekTime} seconds`);
+
+      if (seekTime < lastSeekTime) {
+        console.log("User is seeking backwards - Reloading video player...");
+        setLastSeekTime(seekTime);
+        initHls(originalUrl, seekTime);
+      } else {
+        setLastSeekTime(seekTime);
+      }
+    };
+
     video.addEventListener("timeupdate", handleTimeUpdate);
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
-  }, [segments, currentSegmentIndex, currentManifest, originalUrl]);
+    video.addEventListener("seeking", handleSeeking);
+
+    return () => {
+      video.removeEventListener("timeupdate", handleTimeUpdate);
+      video.removeEventListener("seeking", handleSeeking);
+    };
+  }, [segments, currentSegmentIndex, currentManifest, originalUrl, lastSeekTime]);
 
   const handleChoice = async (choice) => {
     const nextIndex = currentSegmentIndex + 1;
@@ -158,7 +179,6 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     setCurrentSegmentIndex(nextIndex);
     setShowOverlay(false);
 
-    // Re-enter full-screen mode if the user was in full-screen before blackout
     const video = videoRef.current;
     if (wasFullScreen && video) {
       video.requestFullscreen().catch((err) => console.warn("Enter full-screen error:", err));
