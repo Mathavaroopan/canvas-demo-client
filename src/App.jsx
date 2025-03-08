@@ -4,6 +4,7 @@ import Home from './Home';
 import VideoUpload from './VideoUpload';
 import ShowVideos from './ShowVideos';
 import VideoPreview from './VideoPreview';
+import ModifyLock from './ModifyLock';
 
 export default function App() {
   return (
@@ -13,7 +14,8 @@ export default function App() {
         <Route path="/create-video" element={<VideoUpload />} />
         <Route path="/show-videos" element={<ShowVideos />} />
         <Route path="/preview" element={<VideoPreview />} />
-      </Routes>
+        <Route path="/modify-video" element={<ModifyLock />} />
+        </Routes>
     </Router>
   );
 }

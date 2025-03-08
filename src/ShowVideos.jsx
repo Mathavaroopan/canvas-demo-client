@@ -1,54 +1,131 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-import NavBar from './NavBar';
+// ShowVideos.jsx
+
+import React, { useState } from "react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import NavBar from "./NavBar";
 
 export default function ShowVideos() {
+  const [awsData, setAwsData] = useState(null); // parsed JSON object
   const [folders, setFolders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
   const navigate = useNavigate();
   axios.defaults.withCredentials = true;
-  useEffect(() => {
-    async function fetchFolders() {
-      try {
-        const response = await axios.get(`${import.meta.env.VITE_API_URL}/get-folder-names`, { withCredentials: true });;
-        console.log("vite: " + import.meta.env.VITE_API_URL);
-        setFolders(response.data.folders || []);
-      } catch (error) {
-        console.error("Error fetching folders:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchFolders();
-  }, []);
 
+  /**
+   * Handle uploading the AWS JSON file
+   */
+  const handleJsonUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      setAwsData(parsed);
+      setErrorMsg(""); // clear any previous error
+      console.log("Parsed AWS JSON:", parsed);
+    } catch (error) {
+      console.error("Error parsing AWS JSON file:", error);
+      setErrorMsg("Invalid JSON file. Please check the format.");
+    }
+  };
+
+  /**
+   * Fetch the folders from S3 using the user-provided AWS data
+   */
+  const fetchFolders = async () => {
+    if (!awsData) {
+      setErrorMsg("Please upload a valid AWS JSON file first.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      // The server expects { awsData } in the request body.
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/get-video-names`,
+        { awsData },
+        { withCredentials: true }
+      );
+
+      if (response.data && response.data.folders) {
+        setFolders(response.data.folders);
+      } else {
+        setFolders([]);
+      }
+    } catch (err) {
+      console.error("Error fetching folders:", err);
+      setErrorMsg("Failed to fetch folders. Check console/logs.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Navigate to preview page for a given folder
+   */
   const handlePreview = (folderUrl) => {
-    navigate("/preview", { state: { folderUrl } });
+    // Pass folderUrl and awsData to /preview via state
+    navigate("/preview", {
+      state: { folderUrl, awsData },
+    });
   };
 
   return (
     <div>
       <NavBar />
       <div style={styles.container}>
-        <h1 style={styles.heading}>Available Videos</h1>
-        {loading ? (
-          <p style={styles.status}>Loading folders...</p>
-        ) : folders.length === 0 ? (
-          <p style={styles.status}>No videos available.</p>
-        ) : (
+        <h1 style={styles.heading}>Available Videos (S3 Folders)</h1>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Upload AWS JSON File:</label>
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleJsonUpload}
+            style={styles.input}
+          />
+        </div>
+
+        {errorMsg && <p style={styles.error}>{errorMsg}</p>}
+
+        {/* If we've parsed the AWS JSON, display some info */}
+        {awsData && (
+          <div style={styles.awsInfo}>
+            <p><strong>AWS Region:</strong> {awsData.awsRegion}</p>
+            <p><strong>Bucket Name:</strong> {awsData.awsBucketName}</p>
+          </div>
+        )}
+
+        <button
+          style={styles.buttonFetch}
+          onClick={fetchFolders}
+          disabled={!awsData || loading}
+        >
+          {loading ? "Fetching..." : "Fetch Folders"}
+        </button>
+
+        {folders.length > 0 ? (
           <ul style={styles.ul}>
             {folders.map((folder, index) => (
               <li key={index} style={styles.li}>
-                <button 
-                  onClick={() => handlePreview(folder)} 
-                  style={styles.button}
+                <button
+                  onClick={() => handlePreview(folder)}
+                  style={styles.folderButton}
                 >
                   {folder}
                 </button>
               </li>
             ))}
           </ul>
+        ) : (
+          !loading && (
+            <p style={styles.status}>No folders to display. (Or none found.)</p>
+          )
         )}
       </div>
     </div>
@@ -70,10 +147,36 @@ const styles = {
     marginBottom: "20px",
     color: "#333",
   },
-  status: {
-    fontSize: "18px",
-    marginBottom: "30px",
-    color: "#555",
+  formGroup: {
+    marginBottom: "20px",
+  },
+  label: {
+    display: "block",
+    fontWeight: "bold",
+    marginBottom: "8px",
+  },
+  input: {
+    padding: "8px",
+    fontSize: "14px",
+    borderRadius: "4px",
+    border: "1px solid #ccc",
+  },
+  error: {
+    color: "red",
+    fontWeight: "bold",
+    marginTop: "10px",
+  },
+  awsInfo: {
+    marginTop: "20px",
+  },
+  buttonFetch: {
+    padding: "10px 20px",
+    margin: "20px 0",
+    backgroundColor: "#4caf50",
+    color: "#fff",
+    border: "none",
+    borderRadius: "5px",
+    cursor: "pointer",
   },
   ul: {
     listStyle: "none",
@@ -82,9 +185,9 @@ const styles = {
   li: {
     marginBottom: "15px",
   },
-  button: {
+  folderButton: {
     padding: "15px 30px",
-    fontSize: "20px",
+    fontSize: "18px",
     border: "1px solid #ccc",
     borderRadius: "8px",
     cursor: "pointer",
@@ -92,5 +195,9 @@ const styles = {
     color: "#fff",
     transition: "background-color 0.3s ease",
   },
+  status: {
+    fontSize: "18px",
+    color: "#555",
+    marginTop: "20px",
+  },
 };
-

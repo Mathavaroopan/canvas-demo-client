@@ -1,20 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
 import NavBar from './NavBar';
 
 export default function VideoUpload() {
-  const [videoFile, setVideoFile] = useState(null);
-  const [platformId, setPlatformId] = useState(""); 
+  const [jsonFile, setJsonFile] = useState(null);
+  const [awsData, setAwsData] = useState(null); // we'll parse the JSON into this
+  const [platformId, setPlatformId] = useState("");
   const [userId, setUserId] = useState("");
   const [contentId, setContentId] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
-  axios.defaults.withCredentials = true;
 
-  const handleVideoUpload = (e) => {
-    setVideoFile(e.target.files[0]);
+  // Handle uploading the JSON file locally and parse it.
+  const handleJsonUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      setJsonFile(file);
+      setAwsData(parsed);
+    } catch (error) {
+      console.error("Error parsing JSON file:", error);
+      alert("Invalid JSON file. Please check the format.");
+    }
   };
 
   const handleAddBlackoutLock = () => {
@@ -27,7 +36,6 @@ export default function VideoUpload() {
     setBlackoutLocks(newLocks);
   };
 
-  // Function to delete a blackout lock.
   const handleDeleteBlackoutLock = (index) => {
     const newLocks = [...blackoutLocks];
     newLocks.splice(index, 1);
@@ -36,36 +44,41 @@ export default function VideoUpload() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!videoFile || !platformId || !userId || !contentId) {
-      alert("Please fill in all required fields and upload a video.");
+    if (!awsData) {
+      alert("Please upload a valid JSON file with AWS and video information.");
+      return;
+    }
+    if (!platformId || !userId || !contentId) {
+      alert("Please fill in all required fields (Platform ID, User ID, Content ID).");
       return;
     }
 
     setIsLoading(true);
-    
-    const formData = new FormData();
-    formData.append("video", videoFile);
-    formData.append("platformId", platformId);
-    formData.append("userId", userId);
-    formData.append("contentId", contentId);
-    formData.append("contentUrl", URL.createObjectURL(videoFile));
-    formData.append("blackoutLocks", JSON.stringify(blackoutLocks));
-
     try {
-      const response = await axios.post(`${import.meta.env.VITE_API_URL}/create-lock`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      
+      // Combine all data into one object
+      const payload = {
+        awsData,
+        platformId,
+        userId,
+        contentId,
+        blackoutLocks,
+      };
+
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/create-AES`,
+        payload
+      );
+
       if (response.status !== 201) {
-        throw new Error(`Upload failed: ${response.statusText}`, { withCredentials: true });;
+        throw new Error(`Processing failed: ${response.statusText}`);
       }
-      
+
       alert("Video processing completed! Lock created successfully.");
       console.log("Server Response:", response.data);
-      setIsLoading(false);
     } catch (error) {
       console.error("Error uploading:", error);
-      alert("Failed to process the video. Please try again.");
+      alert("Failed to process the video. Please check the console/logs.");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -74,12 +87,18 @@ export default function VideoUpload() {
     <div>
       <NavBar />
       <div style={styles.container}>
-        <h2 style={styles.heading}>Upload Your Video</h2>
+        <h2 style={styles.heading}>Process Video From S3</h2>
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Video File:</label>
-            <input type="file" onChange={handleVideoUpload} accept="video/*" style={styles.input}/>
+            <label style={styles.label}>Upload JSON File:</label>
+            <input
+              type="file"
+              accept=".json"
+              onChange={handleJsonUpload}
+              style={styles.input}
+            />
           </div>
+
           <div style={styles.formGroup}>
             <label style={styles.label}>Platform ID:</label>
             <input
@@ -90,6 +109,7 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
+
           <div style={styles.formGroup}>
             <label style={styles.label}>User ID:</label>
             <input
@@ -100,6 +120,7 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
+
           <div style={styles.formGroup}>
             <label style={styles.label}>Content ID:</label>
             <input
@@ -110,6 +131,7 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
+
           <h3 style={styles.subheading}>Blackout Locks</h3>
           {blackoutLocks.map((lock, index) => (
             <div key={index} style={styles.lockContainer}>
@@ -127,9 +149,9 @@ export default function VideoUpload() {
                 onChange={(e) => handleBlackoutLockChange(index, "endTime", e.target.value)}
                 style={styles.input}
               />
-              <button 
-                type="button" 
-                onClick={() => handleDeleteBlackoutLock(index)} 
+              <button
+                type="button"
+                onClick={() => handleDeleteBlackoutLock(index)}
                 style={styles.deleteButton}
               >
                 🗑️
@@ -139,6 +161,7 @@ export default function VideoUpload() {
           <button type="button" onClick={handleAddBlackoutLock} style={styles.addButton}>
             ➕ Add Blackout Lock
           </button>
+
           <button type="submit" style={styles.submitButton} disabled={isLoading}>
             {isLoading ? "Processing..." : "🚀 Process Video"}
           </button>
@@ -218,5 +241,5 @@ const styles = {
     cursor: "pointer",
     fontSize: "18px",
     width: "100%",
-  }
+  },
 };
