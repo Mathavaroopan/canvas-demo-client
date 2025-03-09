@@ -10,6 +10,7 @@ export default function VideoUpload() {
   const [contentId, setContentId] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [validationError, setValidationError] = useState("");
 
   // Handle uploading the JSON file locally and parse it.
   const handleJsonUpload = async (e) => {
@@ -26,20 +27,95 @@ export default function VideoUpload() {
     }
   };
 
+  // Function to check for time segment overlaps
+  const hasOverlappingSegments = (segments) => {
+    // Sort segments by start time for easier comparison
+    const sortedSegments = [...segments].sort((a, b) => parseFloat(a.startTime) - parseFloat(b.startTime));
+    
+    // Check for any overlap between adjacent segments
+    for (let i = 0; i < sortedSegments.length - 1; i++) {
+      const currentSegment = sortedSegments[i];
+      const nextSegment = sortedSegments[i + 1];
+      
+      // Convert to numbers to ensure proper comparison
+      const currentEnd = parseFloat(currentSegment.endTime);
+      const nextStart = parseFloat(nextSegment.startTime);
+      
+      if (currentEnd > nextStart) {
+        return {
+          hasOverlap: true,
+          message: `Overlap detected: Segment ${i+1} (${currentSegment.startTime}-${currentSegment.endTime}) overlaps with Segment ${i+2} (${nextSegment.startTime}-${nextSegment.endTime})`
+        };
+      }
+    }
+    
+    return { hasOverlap: false };
+  };
+
+  // Validate a single segment for valid start/end times
+  const isValidSegment = (segment) => {
+    const startTime = parseFloat(segment.startTime);
+    const endTime = parseFloat(segment.endTime);
+    
+    if (isNaN(startTime) || isNaN(endTime)) {
+      return { isValid: false, message: "Start and end times must be valid numbers" };
+    }
+    
+    if (startTime < 0 || endTime < 0) {
+      return { isValid: false, message: "Start and end times cannot be negative" };
+    }
+    
+    if (startTime >= endTime) {
+      return { isValid: false, message: "End time must be greater than start time" };
+    }
+    
+    return { isValid: true };
+  };
+
   const handleAddBlackoutLock = () => {
     setBlackoutLocks([...blackoutLocks, { startTime: "", endTime: "" }]);
+    setValidationError("");
   };
 
   const handleBlackoutLockChange = (index, key, value) => {
     const newLocks = [...blackoutLocks];
     newLocks[index][key] = value;
     setBlackoutLocks(newLocks);
+    
+    // Clear validation error when user makes changes
+    setValidationError("");
   };
 
   const handleDeleteBlackoutLock = (index) => {
     const newLocks = [...blackoutLocks];
     newLocks.splice(index, 1);
     setBlackoutLocks(newLocks);
+    setValidationError("");
+  };
+
+  const validateBlackoutLocks = () => {
+    // Skip validation if no locks defined
+    if (blackoutLocks.length === 0) {
+      return true;
+    }
+    
+    // Validate each individual segment
+    for (let i = 0; i < blackoutLocks.length; i++) {
+      const validation = isValidSegment(blackoutLocks[i]);
+      if (!validation.isValid) {
+        setValidationError(`Segment ${i+1}: ${validation.message}`);
+        return false;
+      }
+    }
+    
+    // Check for overlaps between segments
+    const overlapCheck = hasOverlappingSegments(blackoutLocks);
+    if (overlapCheck.hasOverlap) {
+      setValidationError(overlapCheck.message);
+      return false;
+    }
+    
+    return true;
   };
 
   const handleSubmit = async (e) => {
@@ -50,6 +126,11 @@ export default function VideoUpload() {
     }
     if (!platformId || !userId || !contentId) {
       alert("Please fill in all required fields (Platform ID, User ID, Content ID).");
+      return;
+    }
+    
+    // Validate the blackout locks before submission
+    if (!validateBlackoutLocks()) {
       return;
     }
 
@@ -133,6 +214,12 @@ export default function VideoUpload() {
           </div>
 
           <h3 style={styles.subheading}>Blackout Locks</h3>
+          {validationError && (
+            <div style={styles.errorMessage}>
+              ⚠️ {validationError}
+            </div>
+          )}
+          
           {blackoutLocks.map((lock, index) => (
             <div key={index} style={styles.lockContainer}>
               <input
@@ -241,5 +328,14 @@ const styles = {
     cursor: "pointer",
     fontSize: "18px",
     width: "100%",
+  },
+  errorMessage: {
+    backgroundColor: "#ffebee",
+    color: "#c62828",
+    padding: "10px",
+    borderRadius: "4px",
+    marginBottom: "15px",
+    textAlign: "center",
+    fontWeight: "bold",
   },
 };

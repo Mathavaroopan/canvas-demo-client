@@ -14,7 +14,7 @@ export default function App() {
         <Route path="/create-video" element={<VideoUpload />} />
         <Route path="/show-videos" element={<ShowVideos />} />
         <Route path="/preview" element={<VideoPreview />} />
-        <Route path="/modify-video" element={<ModifyLock />} />
+        <Route path="/modify-videos" element={<ModifyLock />} />
         </Routes>
     </Router>
   );

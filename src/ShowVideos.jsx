@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "./NavBar";
 
 export default function ShowVideos() {
-  const [awsData, setAwsData] = useState(null); // parsed JSON object
+  const [awsData, setAwsData] = useState(null); // Parsed AWS JSON object
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -12,9 +12,7 @@ export default function ShowVideos() {
   const navigate = useNavigate();
   axios.defaults.withCredentials = true;
 
-  /**
-   * Handle uploading the AWS JSON file
-   */
+  // Handle uploading the AWS JSON file.
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -22,7 +20,7 @@ export default function ShowVideos() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       setAwsData(parsed);
-      setErrorMsg(""); // clear any previous error
+      setErrorMsg(""); // Clear any previous error
       console.log("Parsed AWS JSON:", parsed);
     } catch (error) {
       console.error("Error parsing AWS JSON file:", error);
@@ -30,9 +28,7 @@ export default function ShowVideos() {
     }
   };
 
-  /**
-   * Fetch the folders from S3 using the user-provided AWS data
-   */
+  // Fetch folders from S3 using the provided AWS data.
   const fetchFolders = async () => {
     if (!awsData) {
       setErrorMsg("Please upload a valid AWS JSON file first.");
@@ -41,13 +37,11 @@ export default function ShowVideos() {
     setLoading(true);
     setErrorMsg("");
     try {
-      // The server expects { awsData } in the request body.
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/get-video-names`,
         { awsData },
         { withCredentials: true }
       );
-
       if (response.data && response.data.folders) {
         setFolders(response.data.folders);
       } else {
@@ -61,55 +55,75 @@ export default function ShowVideos() {
     }
   };
 
-  /**
-   * Navigate to preview page for a given folder
-   */
+  // Navigate to the preview page for a given folder.
   const handlePreview = (folderUrl) => {
-    // Pass folderUrl and awsData to /preview via state
     navigate("/preview", {
       state: { folderUrl, awsData },
     });
   };
 
   /**
-   * Delete a folder.
-   * When a folder's delete icon is clicked, we:
-   * 1. Extract the content id from the folder name.
-   * 2. Fetch the lock details using /get-lock-by-contentid/:contentId.
-   * 3. Retrieve the lock id (LockJsonObject.lockId) from the lock record.
-   * 4. Call the /delete-AES API with { awsData, lockId }.
+   * Navigate to the modify route.
+   * This function first extracts the content id from the folder URL, fetches the lock details,
+   * and then passes awsData along with the LockJsonObject (from the lock record)
+   * to the ModifyLock component via location state.
    */
+  const handleEditFolder = async (folderUrl) => {
+    let prefix = awsData.folderPrefix || "";
+    if (prefix && !prefix.endsWith("/")) {
+      prefix += "/";
+    }
+    const contentId = folderUrl.replace(prefix, "").replace(/\/$/, "");
+    try {
+      const response = await axios.get(
+        `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
+        { withCredentials: true }
+      );
+      if (response.data && response.data.lock) {
+        const lockJsonObject = response.data.lock.LockJsonObject;
+        // Pass awsData and lockJsonObject to the modify page.
+        navigate("/modify-videos", {
+          state: { awsData, lockJsonObject },
+        });
+      } else {
+        setErrorMsg("Lock not found for this folder.");
+      }
+    } catch (err) {
+      console.error("Error fetching lock details for edit:", err);
+      setErrorMsg("Error fetching lock details for edit.");
+    }
+  };
+
+  // Delete a folder using similar steps as before.
   const handleDeleteFolder = async (folder) => {
     if (!awsData) {
       setErrorMsg("AWS JSON not provided.");
       return;
     }
-    // Assume awsData.folderPrefix is defined.
     let prefix = awsData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
       prefix += "/";
     }
-    // Extract content id from the folder.
     const contentId = folder.replace(prefix, "").replace(/\/$/, "");
     try {
-      // Fetch the lock using the content id.
       const lockResponse = await axios.get(
         `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
         { withCredentials: true }
       );
+      console.log(`${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`);
       if (lockResponse.data && lockResponse.data.lock) {
-        // Use the lock id from LockJsonObject (not _id)
         const lockId = lockResponse.data.lock.LockJsonObject.lockId;
-        // Call the delete API.
         const payload = { awsData, lockId };
         const delResponse = await axios.post(
           `${import.meta.env.VITE_API_URL}/delete-AES`,
           payload,
           { withCredentials: true }
         );
-        if (delResponse.data && delResponse.data.message === "Folder deleted successfully") {
+        if (
+          delResponse.data &&
+          delResponse.data.message === "Folder deleted successfully"
+        ) {
           setErrorMsg("Folder deleted successfully");
-          // Refresh the folder list.
           fetchFolders();
         } else {
           setErrorMsg("Failed to delete folder.");
@@ -131,12 +145,16 @@ export default function ShowVideos() {
 
         <div style={styles.formGroup}>
           <label style={styles.label}>Upload AWS JSON File:</label>
-          <input type="file" accept=".json" onChange={handleJsonUpload} style={styles.input} />
+          <input
+            type="file"
+            accept=".json"
+            onChange={handleJsonUpload}
+            style={styles.input}
+          />
         </div>
 
         {errorMsg && <p style={styles.error}>{errorMsg}</p>}
 
-        {/* If we've parsed the AWS JSON, display some info */}
         {awsData && (
           <div style={styles.awsInfo}>
             <p>
@@ -148,7 +166,11 @@ export default function ShowVideos() {
           </div>
         )}
 
-        <button style={styles.buttonFetch} onClick={fetchFolders} disabled={!awsData || loading}>
+        <button
+          style={styles.buttonFetch}
+          onClick={fetchFolders}
+          disabled={!awsData || loading}
+        >
           {loading ? "Fetching..." : "Fetch Folders"}
         </button>
 
@@ -156,17 +178,31 @@ export default function ShowVideos() {
           <ul style={styles.ul}>
             {folders.map((folder, index) => (
               <li key={index} style={styles.li}>
-                <button onClick={() => handlePreview(folder)} style={styles.folderButton}>
+                <button
+                  onClick={() => handlePreview(folder)}
+                  style={styles.folderButton}
+                >
                   {folder}
                 </button>
-                <button onClick={() => handleDeleteFolder(folder)} style={styles.deleteFolderButton}>
+                <button
+                  onClick={() => handleEditFolder(folder)}
+                  style={styles.editFolderButton}
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  onClick={() => handleDeleteFolder(folder)}
+                  style={styles.deleteFolderButton}
+                >
                   🗑️
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          !loading && <p style={styles.status}>No folders to display. (Or none found.)</p>
+          !loading && (
+            <p style={styles.status}>No folders to display. (Or none found.)</p>
+          )
         )}
       </div>
     </div>
@@ -237,6 +273,16 @@ const styles = {
     borderRadius: "8px",
     cursor: "pointer",
     backgroundColor: "#ff9800",
+    color: "#fff",
+    transition: "background-color 0.3s ease",
+  },
+  editFolderButton: {
+    padding: "10px 15px",
+    fontSize: "18px",
+    border: "1px solid #ccc",
+    borderRadius: "8px",
+    cursor: "pointer",
+    backgroundColor: "#2196f3",
     color: "#fff",
     transition: "background-color 0.3s ease",
   },
