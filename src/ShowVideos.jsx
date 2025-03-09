@@ -1,5 +1,3 @@
-// ShowVideos.jsx
-
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -20,7 +18,6 @@ export default function ShowVideos() {
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
@@ -43,7 +40,6 @@ export default function ShowVideos() {
     }
     setLoading(true);
     setErrorMsg("");
-
     try {
       // The server expects { awsData } in the request body.
       const response = await axios.post(
@@ -75,6 +71,58 @@ export default function ShowVideos() {
     });
   };
 
+  /**
+   * Delete a folder.
+   * When a folder's delete icon is clicked, we:
+   * 1. Extract the content id from the folder name.
+   * 2. Fetch the lock details using /get-lock-by-contentid/:contentId.
+   * 3. Retrieve the lock id (LockJsonObject.lockId) from the lock record.
+   * 4. Call the /delete-AES API with { awsData, lockId }.
+   */
+  const handleDeleteFolder = async (folder) => {
+    if (!awsData) {
+      setErrorMsg("AWS JSON not provided.");
+      return;
+    }
+    // Assume awsData.folderPrefix is defined.
+    let prefix = awsData.folderPrefix || "";
+    if (prefix && !prefix.endsWith("/")) {
+      prefix += "/";
+    }
+    // Extract content id from the folder.
+    const contentId = folder.replace(prefix, "").replace(/\/$/, "");
+    try {
+      // Fetch the lock using the content id.
+      const lockResponse = await axios.get(
+        `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
+        { withCredentials: true }
+      );
+      if (lockResponse.data && lockResponse.data.lock) {
+        // Use the lock id from LockJsonObject (not _id)
+        const lockId = lockResponse.data.lock.LockJsonObject.lockId;
+        // Call the delete API.
+        const payload = { awsData, lockId };
+        const delResponse = await axios.post(
+          `${import.meta.env.VITE_API_URL}/delete-AES`,
+          payload,
+          { withCredentials: true }
+        );
+        if (delResponse.data && delResponse.data.message === "Folder deleted successfully") {
+          setErrorMsg("Folder deleted successfully");
+          // Refresh the folder list.
+          fetchFolders();
+        } else {
+          setErrorMsg("Failed to delete folder.");
+        }
+      } else {
+        setErrorMsg("Lock not found for this folder.");
+      }
+    } catch (err) {
+      console.error("Error deleting folder:", err);
+      setErrorMsg("Error deleting folder.");
+    }
+  };
+
   return (
     <div>
       <NavBar />
@@ -83,12 +131,7 @@ export default function ShowVideos() {
 
         <div style={styles.formGroup}>
           <label style={styles.label}>Upload AWS JSON File:</label>
-          <input
-            type="file"
-            accept=".json"
-            onChange={handleJsonUpload}
-            style={styles.input}
-          />
+          <input type="file" accept=".json" onChange={handleJsonUpload} style={styles.input} />
         </div>
 
         {errorMsg && <p style={styles.error}>{errorMsg}</p>}
@@ -96,16 +139,16 @@ export default function ShowVideos() {
         {/* If we've parsed the AWS JSON, display some info */}
         {awsData && (
           <div style={styles.awsInfo}>
-            <p><strong>AWS Region:</strong> {awsData.awsRegion}</p>
-            <p><strong>Bucket Name:</strong> {awsData.awsBucketName}</p>
+            <p>
+              <strong>AWS Region:</strong> {awsData.awsRegion}
+            </p>
+            <p>
+              <strong>Bucket Name:</strong> {awsData.awsBucketName}
+            </p>
           </div>
         )}
 
-        <button
-          style={styles.buttonFetch}
-          onClick={fetchFolders}
-          disabled={!awsData || loading}
-        >
+        <button style={styles.buttonFetch} onClick={fetchFolders} disabled={!awsData || loading}>
           {loading ? "Fetching..." : "Fetch Folders"}
         </button>
 
@@ -113,19 +156,17 @@ export default function ShowVideos() {
           <ul style={styles.ul}>
             {folders.map((folder, index) => (
               <li key={index} style={styles.li}>
-                <button
-                  onClick={() => handlePreview(folder)}
-                  style={styles.folderButton}
-                >
+                <button onClick={() => handlePreview(folder)} style={styles.folderButton}>
                   {folder}
+                </button>
+                <button onClick={() => handleDeleteFolder(folder)} style={styles.deleteFolderButton}>
+                  🗑️
                 </button>
               </li>
             ))}
           </ul>
         ) : (
-          !loading && (
-            <p style={styles.status}>No folders to display. (Or none found.)</p>
-          )
+          !loading && <p style={styles.status}>No folders to display. (Or none found.)</p>
         )}
       </div>
     </div>
@@ -184,6 +225,10 @@ const styles = {
   },
   li: {
     marginBottom: "15px",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "10px",
   },
   folderButton: {
     padding: "15px 30px",
@@ -194,6 +239,15 @@ const styles = {
     backgroundColor: "#ff9800",
     color: "#fff",
     transition: "background-color 0.3s ease",
+  },
+  deleteFolderButton: {
+    padding: "10px",
+    fontSize: "18px",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    backgroundColor: "#f44336",
+    color: "#fff",
   },
   status: {
     fontSize: "18px",
