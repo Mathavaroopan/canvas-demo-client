@@ -5,12 +5,14 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const [segments, setSegments] = useState([]);
+  const [blackoutSegments, setBlackoutSegments] = useState([]);
   const [playlistLoaded, setPlaylistLoaded] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [currentManifest, setCurrentManifest] = useState("original");
   const [showOverlay, setShowOverlay] = useState(false);
   const [wasFullScreen, setWasFullScreen] = useState(false);
   const [lastSeekTime, setLastSeekTime] = useState(0);
+  const [currentBlackoutSegment, setCurrentBlackoutSegment] = useState(null);
 
   useEffect(() => {
     async function fetchPlaylists() {
@@ -19,6 +21,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
         const textBlackout = await resBlackout.text();
         const lines = textBlackout.split("\n").map((line) => line.trim());
         let segs = [];
+        let blackoutSegs = [];
         let cumTime = 0;
         for (let i = 0; i < lines.length; i++) {
           if (lines[i].startsWith("#EXTINF:")) {
@@ -31,11 +34,21 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
               startTime: cumTime,
               endTime: cumTime + duration,
             });
+            
+            // Store blackout segments separately for tracking user choices
+            if (type === "blackout") {
+              blackoutSegs.push({
+                startTime: cumTime,
+                endTime: cumTime + duration
+              });
+            }
+            
             cumTime += duration;
             i++;
           }
         }
         setSegments(segs);
+        setBlackoutSegments(blackoutSegs);
         setPlaylistLoaded(true);
       } catch (error) {
         console.error("Error fetching playlist:", error);
@@ -98,6 +111,27 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
     });
   };
 
+  // Check if time is within a blackout segment
+  const isInBlackoutSegment = (time) => {
+    for (let i = 0; i < blackoutSegments.length; i++) {
+      const segment = blackoutSegments[i];
+      if (time >= segment.startTime && time < segment.endTime) {
+        return { inBlackout: true, segmentIndex: i };
+      }
+    }
+    return { inBlackout: false, segmentIndex: -1 };
+  };
+
+  // Find segment index for a given time
+  const findSegmentIndex = (time) => {
+    for (let i = 0; i < segments.length; i++) {
+      if (time >= segments[i].startTime && time < segments[i].endTime) {
+        return i;
+      }
+    }
+    return 0; // Default to first segment if not found
+  };
+
   useEffect(() => {
     if (playlistLoaded && segments.length > 0) {
       initHls(originalUrl, 0);
@@ -121,12 +155,27 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
           const nextSeg = segments[nextIndex];
 
           if (nextSeg.type === "blackout") {
-            setWasFullScreen(document.fullscreenElement !== null);
-            if (document.fullscreenElement) {
-              document.exitFullscreen().catch((err) => console.warn("Exit full-screen error:", err));
+            // Check if this blackout segment still exists in blackoutSegments
+            const isStillBlackout = blackoutSegments.some(
+              segment => segment.startTime === nextSeg.startTime && segment.endTime === nextSeg.endTime
+            );
+
+            if (isStillBlackout) {
+              setWasFullScreen(document.fullscreenElement !== null);
+              if (document.fullscreenElement) {
+                document.exitFullscreen().catch((err) => console.warn("Exit full-screen error:", err));
+              }
+              video.pause();
+              setShowOverlay(true);
+              setCurrentBlackoutSegment(blackoutSegments.findIndex(
+                segment => segment.startTime === nextSeg.startTime && segment.endTime === nextSeg.endTime
+              ));
+            } else {
+              // This was a blackout segment but user previously chose original
+              initHls(originalUrl, nextSeg.startTime);
+              setCurrentManifest("original");
+              setCurrentSegmentIndex(nextIndex);
             }
-            video.pause();
-            setShowOverlay(true);
           } else {
             if (currentManifest !== "original") {
               initHls(originalUrl, segments[nextIndex].startTime);
@@ -146,12 +195,31 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
       console.log(`User seeking to: ${seekTime} seconds`);
 
       if (seekTime < lastSeekTime) {
-        console.log("User is seeking backwards - Reloading video player...");
-        setLastSeekTime(seekTime);
-        initHls(originalUrl, seekTime);
-      } else {
-        setLastSeekTime(seekTime);
+        console.log("User is seeking backwards - Checking blackout segments...");
+        
+        // Check if seeking to a blackout segment
+        const { inBlackout, segmentIndex } = isInBlackoutSegment(seekTime);
+        
+        if (inBlackout) {
+          // User is seeking to a blackout segment
+          setCurrentBlackoutSegment(segmentIndex);
+          setWasFullScreen(document.fullscreenElement !== null);
+          
+          if (document.fullscreenElement) {
+            document.exitFullscreen().catch((err) => console.warn("Exit full-screen error:", err));
+          }
+          
+          video.pause();
+          setShowOverlay(true);
+        } else {
+          // Not seeking to a blackout segment, use original manifest
+          initHls(originalUrl, seekTime);
+          setCurrentManifest("original");
+          setCurrentSegmentIndex(findSegmentIndex(seekTime));
+        }
       }
+      
+      setLastSeekTime(seekTime);
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
@@ -161,23 +229,32 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("seeking", handleSeeking);
     };
-  }, [segments, currentSegmentIndex, currentManifest, originalUrl, lastSeekTime]);
+  }, [segments, blackoutSegments, currentSegmentIndex, currentManifest, originalUrl, lastSeekTime]);
 
   const handleChoice = async (choice) => {
-    const nextIndex = currentSegmentIndex + 1;
-    if (nextIndex >= segments.length) return;
-    const startTime = segments[nextIndex].startTime;
+    if (currentBlackoutSegment === null) return;
+    const segment = blackoutSegments[currentBlackoutSegment];
+    const segmentIndex = findSegmentIndex(segment.startTime);
+    const startTime = segment.startTime;
 
-    if (choice === "lock") {
-      setCurrentManifest("blackout");
-      await initHls(blackoutUrl, startTime);
-    } else {
+    if (choice === "original") {
+      // Remove this segment from blackoutSegments when user chooses original
+      setBlackoutSegments(prev => 
+        prev.filter((_, index) => index !== currentBlackoutSegment)
+      );
+      
       setCurrentManifest("original");
       await initHls(originalUrl, startTime);
+    } else {
+      // Keep the segment in blackoutSegments when user chooses blackout
+      setCurrentManifest("blackout");
+      await initHls(blackoutUrl, startTime);
     }
 
-    setCurrentSegmentIndex(nextIndex);
+    // Update the current segment index to match where we are now
+    setCurrentSegmentIndex(segmentIndex);
     setShowOverlay(false);
+    setCurrentBlackoutSegment(null);
 
     const video = videoRef.current;
     if (wasFullScreen && video) {
