@@ -8,7 +8,8 @@ export default function ModifyLock() {
   const navigate = useNavigate();
   // Now we expect awsData and lockJsonObject to be passed via location state.
   const { awsData, lockJsonObject } = location.state || {};
-
+  console.log(awsData);
+  console.log(lockJsonObject);
   const [contentId, setContentId] = useState("");
   const [destinationFolder, setDestinationFolder] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
@@ -24,10 +25,10 @@ export default function ModifyLock() {
       // Set contentId from the lockJsonObject.
       setContentId(lockJsonObject.contentId);
       // Compute destinationFolder using awsData.awsDestinationFolder if available.
-      if (awsData.awsDestinationFolder) {
-        const baseFolder = awsData.awsDestinationFolder.endsWith('/')
-          ? awsData.awsDestinationFolder
-          : awsData.awsDestinationFolder + '/';
+      if (awsData.folderPrefix) {
+        const baseFolder = awsData.folderPrefix.endsWith('/')
+          ? awsData.folderPrefix
+          : awsData.folderPrefix + '/';
         setDestinationFolder(baseFolder + lockJsonObject.contentId + '/');
       }
       // Set blackout locks from the existing lock data.
@@ -120,6 +121,9 @@ export default function ModifyLock() {
   // Submit the modifications.
   const handleSubmitModification = async () => {
     if (!contentId || !awsData || !destinationFolder) {
+      console.log(contentId);
+      console.log(awsData);
+      console.log(destinationFolder);
       setMessage("Missing required details. Cannot submit modification.");
       return;
     }
