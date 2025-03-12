@@ -13,6 +13,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
   const [wasFullScreen, setWasFullScreen] = useState(false);
   const [lastSeekTime, setLastSeekTime] = useState(0);
   const [currentBlackoutSegment, setCurrentBlackoutSegment] = useState(null);
+  const [exactSeekPosition, setExactSeekPosition] = useState(0);
 
   useEffect(() => {
     async function fetchPlaylists() {
@@ -167,6 +168,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
               }
               video.pause();
               setShowOverlay(true);
+              setExactSeekPosition(nextSeg.startTime); // Beginning of the next segment
               setCurrentBlackoutSegment(blackoutSegments.findIndex(
                 segment => segment.startTime === nextSeg.startTime && segment.endTime === nextSeg.endTime
               ));
@@ -203,6 +205,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
         if (inBlackout) {
           // User is seeking to a blackout segment
           setCurrentBlackoutSegment(segmentIndex);
+          setExactSeekPosition(seekTime); // Save the exact seek position
           setWasFullScreen(document.fullscreenElement !== null);
           
           if (document.fullscreenElement) {
@@ -233,9 +236,9 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
 
   const handleChoice = async (choice) => {
     if (currentBlackoutSegment === null) return;
+    
     const segment = blackoutSegments[currentBlackoutSegment];
-    const segmentIndex = findSegmentIndex(segment.startTime);
-    const startTime = segment.startTime;
+    const segmentIndex = findSegmentIndex(exactSeekPosition);
 
     if (choice === "original") {
       // Remove this segment from blackoutSegments when user chooses original
@@ -244,11 +247,11 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
       );
       
       setCurrentManifest("original");
-      await initHls(originalUrl, startTime);
+      await initHls(originalUrl, exactSeekPosition); // Use the exact seek position
     } else {
       // Keep the segment in blackoutSegments when user chooses blackout
       setCurrentManifest("blackout");
-      await initHls(blackoutUrl, startTime);
+      await initHls(blackoutUrl, exactSeekPosition); // Use the exact seek position
     }
 
     // Update the current segment index to match where we are now
@@ -282,7 +285,7 @@ export default function VideoPlayer({ originalUrl, blackoutUrl }) {
             color: "#fff",
           }}
         >
-          <h2 style={{ fontSize: "32px", marginBottom: "20px" }}>Upcoming Blackout</h2>
+          <h2 style={{ fontSize: "32px", marginBottom: "20px" }}>Blackout Segment</h2>
           <p style={{ fontSize: "20px", marginBottom: "30px" }}>Choose how to continue:</p>
           <div>
             <button onClick={() => handleChoice("lock")} style={styles.choiceButton}>
