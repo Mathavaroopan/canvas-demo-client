@@ -144,7 +144,7 @@ export default function VideoUpload() {
         contentId,
         blackoutLocks,
       };
-
+      console.log(payload);
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/create-AES`,
         payload

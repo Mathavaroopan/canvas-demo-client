@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "./NavBar";
 
 export default function ShowVideos() {
-  const [awsData, setAwsData] = useState(null); // Parsed AWS JSON object
+  const [json, setJson] = useState(null); // JSON object containing storage_type and MetaData
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -12,26 +12,26 @@ export default function ShowVideos() {
   const navigate = useNavigate();
   axios.defaults.withCredentials = true;
 
-  // Handle uploading the AWS JSON file.
+  // Handle JSON file upload.
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      setAwsData(parsed);
-      setErrorMsg(""); // Clear any previous error
-      console.log("Parsed AWS JSON:", parsed);
+      setJson(parsed);
+      setErrorMsg("");
+      console.log("Parsed JSON:", parsed);
     } catch (error) {
-      console.error("Error parsing AWS JSON file:", error);
+      console.error("Error parsing JSON file:", error);
       setErrorMsg("Invalid JSON file. Please check the format.");
     }
   };
 
-  // Fetch folders from S3 using the provided AWS data.
+  // Fetch folder names from S3 using the uploaded JSON.
   const fetchFolders = async () => {
-    if (!awsData) {
-      setErrorMsg("Please upload a valid AWS JSON file first.");
+    if (!json) {
+      setErrorMsg("Please upload a valid JSON file first.");
       return;
     }
     setLoading(true);
@@ -39,7 +39,7 @@ export default function ShowVideos() {
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/get-video-names`,
-        { awsData },
+        json,
         { withCredentials: true }
       );
       if (response.data && response.data.folders) {
@@ -57,19 +57,13 @@ export default function ShowVideos() {
 
   // Navigate to the preview page for a given folder.
   const handlePreview = (folderUrl) => {
-    navigate("/preview", {
-      state: { folderUrl, awsData },
-    });
+    console.log("sending this" + folderUrl);
+    navigate("/preview", { state: { folderUrl, json } });
   };
 
-  /**
-   * Navigate to the modify route.
-   * This function first extracts the content id from the folder URL, fetches the lock details,
-   * and then passes awsData along with the LockJsonObject (from the lock record)
-   * to the ModifyLock component via location state.
-   */
+  // Navigate to the edit page. Extracts contentId from the folder URL by removing the folderPrefix.
   const handleEditFolder = async (folderUrl) => {
-    let prefix = awsData.folderPrefix || "";
+    let prefix = json.MetaData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
       prefix += "/";
     }
@@ -81,10 +75,7 @@ export default function ShowVideos() {
       );
       if (response.data && response.data.lock) {
         const lockJsonObject = response.data.lock.LockJsonObject;
-        // Pass awsData and lockJsonObject to the modify page.
-        navigate("/modify-videos", {
-          state: { awsData, lockJsonObject },
-        });
+        navigate("/modify-videos", { state: { json, lockJsonObject } });
       } else {
         setErrorMsg("Lock not found for this folder.");
       }
@@ -94,26 +85,25 @@ export default function ShowVideos() {
     }
   };
 
-  // Delete a folder using similar steps as before.
-  const handleDeleteFolder = async (folder) => {
-    if (!awsData) {
-      setErrorMsg("AWS JSON not provided.");
+  // Delete a folder by first finding the associated lock.
+  const handleDeleteFolder = async (folderUrl) => {
+    if (!json) {
+      setErrorMsg("JSON not provided.");
       return;
     }
-    let prefix = awsData.folderPrefix || "";
+    let prefix = json.MetaData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
       prefix += "/";
     }
-    const contentId = folder.replace(prefix, "").replace(/\/$/, "");
+    const contentId = folderUrl.replace(prefix, "").replace(/\/$/, "");
     try {
       const lockResponse = await axios.get(
         `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
         { withCredentials: true }
       );
-      console.log(`${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`);
       if (lockResponse.data && lockResponse.data.lock) {
         const lockId = lockResponse.data.lock.LockJsonObject.lockId;
-        const payload = { awsData, lockId };
+        const payload = { json, lockId };
         const delResponse = await axios.post(
           `${import.meta.env.VITE_API_URL}/delete-AES`,
           payload,
@@ -144,7 +134,7 @@ export default function ShowVideos() {
         <h1 style={styles.heading}>Available Videos (S3 Folders)</h1>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Upload AWS JSON File:</label>
+          <label style={styles.label}>Upload JSON File:</label>
           <input
             type="file"
             accept=".json"
@@ -155,13 +145,13 @@ export default function ShowVideos() {
 
         {errorMsg && <p style={styles.error}>{errorMsg}</p>}
 
-        {awsData && (
+        {json && json.MetaData && (
           <div style={styles.awsInfo}>
             <p>
-              <strong>AWS Region:</strong> {awsData.awsRegion}
+              <strong>AWS Region:</strong> {json.MetaData.awsRegion}
             </p>
             <p>
-              <strong>Bucket Name:</strong> {awsData.awsBucketName}
+              <strong>Bucket Name:</strong> {json.MetaData.awsBucketName}
             </p>
           </div>
         )}
@@ -169,7 +159,7 @@ export default function ShowVideos() {
         <button
           style={styles.buttonFetch}
           onClick={fetchFolders}
-          disabled={!awsData || loading}
+          disabled={!json || loading}
         >
           {loading ? "Fetching..." : "Fetch Folders"}
         </button>
@@ -201,7 +191,9 @@ export default function ShowVideos() {
           </ul>
         ) : (
           !loading && (
-            <p style={styles.status}>No folders to display. (Or none found.)</p>
+            <p style={styles.status}>
+              No folders to display. (Or none found.)
+            </p>
           )
         )}
       </div>
@@ -301,3 +293,4 @@ const styles = {
     marginTop: "20px",
   },
 };
+

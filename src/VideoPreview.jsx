@@ -8,7 +8,7 @@ import VideoPlayer from "./VideoPlayer";
 
 export default function VideoPreview() {
   const location = useLocation();
-  const { folderUrl, awsData } = location.state || {};
+  const { folderUrl, json } = location.state || {};
 
   const [downloadStatus, setDownloadStatus] = useState("Downloading HLS files...");
   const [previewReady, setPreviewReady] = useState(false);
@@ -19,7 +19,7 @@ export default function VideoPreview() {
   useEffect(() => {
     async function downloadFolder() {
       try {
-        if (!folderUrl || !awsData) {
+        if (!folderUrl || !json) {
           setDownloadStatus("No folder URL or AWS data provided.");
           return;
         }
@@ -35,7 +35,7 @@ export default function VideoPreview() {
         await axios.post(
           `${import.meta.env.VITE_API_URL}/download-video`,
           {
-            awsData,
+            json,
             folderPrefix: prefix
           },
           { withCredentials: true }
@@ -55,7 +55,7 @@ export default function VideoPreview() {
     }
 
     downloadFolder();
-  }, [folderUrl, awsData]);
+  }, [folderUrl, json]);
 
   return (
     <div>
