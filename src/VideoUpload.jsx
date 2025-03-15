@@ -4,15 +4,16 @@ import NavBar from './NavBar';
 
 export default function VideoUpload() {
   const [jsonFile, setJsonFile] = useState(null);
-  const [awsData, setAwsData] = useState(null); // we'll parse the JSON into this
+  const [awsData, setAwsData] = useState(null); // Parsed JSON will be stored here and sent as MetaData
+  const [storageType, setStorageType] = useState("AWS"); // New state for storage type
   const [platformId, setPlatformId] = useState("");
   const [userId, setUserId] = useState("");
   const [contentId, setContentId] = useState("");
-  const [blackoutLocks, setBlackoutLocks] = useState([]);
+  const [locks, setLocks] = useState([]); // Locks array, but all will be mapped to blackout-lock
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState("");
 
-  // Handle uploading the JSON file locally and parse it.
+  // Handle JSON file upload and parsing.
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -20,101 +21,85 @@ export default function VideoUpload() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       setJsonFile(file);
-      setAwsData(parsed);
+      setAwsData(parsed); // This parsed JSON is our MetaData
+      console.log("Parsed JSON:", parsed);
     } catch (error) {
       console.error("Error parsing JSON file:", error);
       alert("Invalid JSON file. Please check the format.");
     }
   };
 
-  // Function to check for time segment overlaps
+  // Check for overlapping segments.
   const hasOverlappingSegments = (segments) => {
-    // Sort segments by start time for easier comparison
-    const sortedSegments = [...segments].sort((a, b) => parseFloat(a.startTime) - parseFloat(b.startTime));
-    
-    // Check for any overlap between adjacent segments
+    const sortedSegments = [...segments].sort(
+      (a, b) => parseFloat(a.startTime) - parseFloat(b.startTime)
+    );
     for (let i = 0; i < sortedSegments.length - 1; i++) {
-      const currentSegment = sortedSegments[i];
-      const nextSegment = sortedSegments[i + 1];
-      
-      // Convert to numbers to ensure proper comparison
-      const currentEnd = parseFloat(currentSegment.endTime);
-      const nextStart = parseFloat(nextSegment.startTime);
-      
-      if (currentEnd > nextStart) {
+      const current = sortedSegments[i];
+      const next = sortedSegments[i + 1];
+      if (parseFloat(current.endTime) > parseFloat(next.startTime)) {
         return {
           hasOverlap: true,
-          message: `Overlap detected: Segment ${i+1} (${currentSegment.startTime}-${currentSegment.endTime}) overlaps with Segment ${i+2} (${nextSegment.startTime}-${nextSegment.endTime})`
+          message: `Overlap detected: Segment ${i+1} (${current.startTime}-${current.endTime}) overlaps with Segment ${i+2} (${next.startTime}-${next.endTime})`
         };
       }
     }
-    
     return { hasOverlap: false };
   };
 
-  // Validate a single segment for valid start/end times
+  // Validate individual lock segment.
   const isValidSegment = (segment) => {
-    const startTime = parseFloat(segment.startTime);
-    const endTime = parseFloat(segment.endTime);
-    
-    if (isNaN(startTime) || isNaN(endTime)) {
+    const start = parseFloat(segment.startTime);
+    const end = parseFloat(segment.endTime);
+    if (isNaN(start) || isNaN(end)) {
       return { isValid: false, message: "Start and end times must be valid numbers" };
     }
-    
-    if (startTime < 0 || endTime < 0) {
+    if (start < 0 || end < 0) {
       return { isValid: false, message: "Start and end times cannot be negative" };
     }
-    
-    if (startTime >= endTime) {
+    if (start >= end) {
       return { isValid: false, message: "End time must be greater than start time" };
     }
-    
     return { isValid: true };
   };
 
-  const handleAddBlackoutLock = () => {
-    setBlackoutLocks([...blackoutLocks, { startTime: "", endTime: "" }]);
+  // Add a new lock.
+  const handleAddLock = () => {
+    setLocks([...locks, { startTime: "", endTime: "" }]);
     setValidationError("");
   };
 
-  const handleBlackoutLockChange = (index, key, value) => {
-    const newLocks = [...blackoutLocks];
+  // Update a lock.
+  const handleLockChange = (index, key, value) => {
+    const newLocks = [...locks];
     newLocks[index][key] = value;
-    setBlackoutLocks(newLocks);
-    
-    // Clear validation error when user makes changes
+    setLocks(newLocks);
     setValidationError("");
   };
 
-  const handleDeleteBlackoutLock = (index) => {
-    const newLocks = [...blackoutLocks];
+  // Delete a lock.
+  const handleDeleteLock = (index) => {
+    const newLocks = [...locks];
     newLocks.splice(index, 1);
-    setBlackoutLocks(newLocks);
+    setLocks(newLocks);
     setValidationError("");
   };
 
-  const validateBlackoutLocks = () => {
-    // Skip validation if no locks defined
-    if (blackoutLocks.length === 0) {
-      return true;
-    }
-    
-    // Validate each individual segment
-    for (let i = 0; i < blackoutLocks.length; i++) {
-      const validation = isValidSegment(blackoutLocks[i]);
-      if (!validation.isValid) {
-        setValidationError(`Segment ${i+1}: ${validation.message}`);
+  // Validate the locks before submission.
+  const validateLocks = () => {
+    if (locks.length === 0) return true;
+    for (let i = 0; i < locks.length; i++) {
+      const result = isValidSegment(locks[i]);
+      if (!result.isValid) {
+        setValidationError(`Segment ${i+1}: ${result.message}`);
         return false;
       }
     }
-    
-    // Check for overlaps between segments
-    const overlapCheck = hasOverlappingSegments(blackoutLocks);
-    if (overlapCheck.hasOverlap) {
-      setValidationError(overlapCheck.message);
+    const overlapResult = hasOverlappingSegments(locks);
+    if (overlapResult.hasOverlap) {
+      setValidationError(overlapResult.message);
       return false;
     }
-    
     return true;
   };
 
@@ -128,34 +113,37 @@ export default function VideoUpload() {
       alert("Please fill in all required fields (Platform ID, User ID, Content ID).");
       return;
     }
-    
-    // Validate the blackout locks before submission
-    if (!validateBlackoutLocks()) {
-      return;
-    }
+    if (!validateLocks()) return;
 
     setIsLoading(true);
     try {
-      // Combine all data into one object
+      // Map all locks to use "blackout-lock" as lock_type.
+      const mappedLocks = locks.map(lock => ({
+        lock_type: "blackout-lock",
+        startTime: lock.startTime,
+        endTime: lock.endTime
+      }));
+      console.log("AWS Data:", awsData);
+      // Build the payload in the expected format.
       const payload = {
-        awsData,
+        storage_type: storageType,
+        MetaData: awsData,
         platformId,
         userId,
         contentId,
-        blackoutLocks,
+        locks: mappedLocks,
       };
-      console.log(payload);
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/create-AES`,
-        payload
-      );
-
-      if (response.status !== 201) {
-        throw new Error(`Processing failed: ${response.statusText}`);
-      }
-
+      console.log("Payload:", payload);
+      // Uncomment below to send the API call
+      // const response = await axios.post(
+      //   `${import.meta.env.VITE_API_URL}/create-AES`,
+      //   payload
+      // );
+      // if (response.status !== 201) {
+      //   throw new Error(`Processing failed: ${response.statusText}`);
+      // }
       alert("Video processing completed! Lock created successfully.");
-      console.log("Server Response:", response.data);
+      // console.log("Server Response:", response.data);
     } catch (error) {
       console.error("Error uploading:", error);
       alert("Failed to process the video. Please check the console/logs.");
@@ -179,7 +167,17 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
-
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Storage Type:</label>
+            <select
+              value={storageType}
+              onChange={(e) => setStorageType(e.target.value)}
+              style={styles.input}
+            >
+              <option value="AWS">AWS</option>
+              {/* Future options can be added here */}
+            </select>
+          </div>
           <div style={styles.formGroup}>
             <label style={styles.label}>Platform ID:</label>
             <input
@@ -190,7 +188,6 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
-
           <div style={styles.formGroup}>
             <label style={styles.label}>User ID:</label>
             <input
@@ -201,7 +198,6 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
-
           <div style={styles.formGroup}>
             <label style={styles.label}>Content ID:</label>
             <input
@@ -212,43 +208,38 @@ export default function VideoUpload() {
               style={styles.input}
             />
           </div>
-
           <h3 style={styles.subheading}>Blackout Locks</h3>
           {validationError && (
-            <div style={styles.errorMessage}>
-              ⚠️ {validationError}
-            </div>
+            <div style={styles.errorMessage}>⚠️ {validationError}</div>
           )}
-          
-          {blackoutLocks.map((lock, index) => (
+          {locks.map((lock, index) => (
             <div key={index} style={styles.lockContainer}>
               <input
                 type="number"
                 placeholder="Start Time (sec)"
                 value={lock.startTime}
-                onChange={(e) => handleBlackoutLockChange(index, "startTime", e.target.value)}
+                onChange={(e) => handleLockChange(index, "startTime", e.target.value)}
                 style={styles.input}
               />
               <input
                 type="number"
                 placeholder="End Time (sec)"
                 value={lock.endTime}
-                onChange={(e) => handleBlackoutLockChange(index, "endTime", e.target.value)}
+                onChange={(e) => handleLockChange(index, "endTime", e.target.value)}
                 style={styles.input}
               />
               <button
                 type="button"
-                onClick={() => handleDeleteBlackoutLock(index)}
+                onClick={() => handleDeleteLock(index)}
                 style={styles.deleteButton}
               >
                 🗑️
               </button>
             </div>
           ))}
-          <button type="button" onClick={handleAddBlackoutLock} style={styles.addButton}>
+          <button type="button" onClick={handleAddLock} style={styles.addButton}>
             ➕ Add Blackout Lock
           </button>
-
           <button type="submit" style={styles.submitButton} disabled={isLoading}>
             {isLoading ? "Processing..." : "🚀 Process Video"}
           </button>
@@ -339,3 +330,4 @@ const styles = {
     fontWeight: "bold",
   },
 };
+
