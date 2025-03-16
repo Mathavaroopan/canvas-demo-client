@@ -34,14 +34,17 @@ export default function ShowVideos() {
       setErrorMsg("Please upload a valid JSON file first.");
       return;
     }
+    console.log("I'm here");
     setLoading(true);
     setErrorMsg("");
+    console.log("Fetching folders for JSON:", json);
     try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/get-video-names`,
         json,
         { withCredentials: true }
       );
+      console.log("Folders response:", response.data);
       if (response.data && response.data.folders) {
         setFolders(response.data.folders);
       } else {
@@ -64,7 +67,7 @@ export default function ShowVideos() {
   // Navigate to the edit page.
   // Extract contentId from folder URL using json.MetaData.folderPrefix.
   const handleEditFolder = async (folderUrl) => {
-    let prefix = json.MetaData.folderPrefix || "";
+    let prefix = json.storageMetaData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
       prefix += "/";
     }
@@ -75,9 +78,9 @@ export default function ShowVideos() {
         { withCredentials: true }
       );
       console.log("Lock ID response:", response.data);
-      if (response.data && response.data._id) {
+      if (response.data && response.data.lock_id) {
         const res = await axios.get(
-          `${import.meta.env.VITE_API_URL}/get-lockjsonobject/${response.data._id}`,
+          `${import.meta.env.VITE_API_URL}/get-lockjsonobject/${response.data.lock_id}`,
           { withCredentials: true }
         );
         // Expecting the result to have a lockJsonObject property.
@@ -98,7 +101,7 @@ export default function ShowVideos() {
       setErrorMsg("JSON not provided.");
       return;
     }
-    let prefix = json.MetaData.folderPrefix || "";
+    let prefix = json.storageMetaData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
       prefix += "/";
     }
@@ -108,13 +111,12 @@ export default function ShowVideos() {
         `${import.meta.env.VITE_API_URL}/get-lockId-by-contentId/${contentId}`,
         { withCredentials: true }
       );
-      if (lockResponse.data && lockResponse.data._id) {
-        const lockId = lockResponse.data._id;
+      if (lockResponse.data && lockResponse.data.lock_id) {
+        const lockId = lockResponse.data.lock_id;
         const payload = {
-          storage_type: json.storage_type,
-          MetaData: json.MetaData,
+          storageType: json.storageType,
+          storageMetaData: json.storageMetaData,
           lockId,
-          folderPrefix: json.MetaData.folderPrefix,
         };
         console.log(payload);
         const delResponse = await axios.post(

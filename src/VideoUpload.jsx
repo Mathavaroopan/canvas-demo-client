@@ -3,73 +3,39 @@ import axios from 'axios';
 import NavBar from './NavBar';
 
 export default function VideoUpload() {
-  const [jsonFile, setJsonFile] = useState(null);
-  const [awsData, setAwsData] = useState(null); // Parsed JSON will be stored here and sent as MetaData
-  const [storageType, setStorageType] = useState("AWS"); // New state for storage type
-  const [platformId, setPlatformId] = useState("");
-  const [userId, setUserId] = useState("");
+  const [storageType, setStorageType] = useState("AWS");
+  const [awsData, setAwsData] = useState(null); // Parsed JSON for storageMetaData
+  const [inputVideoUrl, setInputVideoUrl] = useState("");
+  const [lockedVideoUrl, setLockedVideoUrl] = useState("");
+  const [platformName, setPlatformName] = useState("");
+  const [userName, setUserName] = useState("");
   const [contentId, setContentId] = useState("");
-  const [locks, setLocks] = useState([]); // Locks array, but all will be mapped to blackout-lock
+  const [locks, setLocks] = useState([]); // Array of blackout lock segments
   const [isLoading, setIsLoading] = useState(false);
   const [validationError, setValidationError] = useState("");
 
-  // Handle JSON file upload and parsing.
+  // Handle JSON file upload for storageMetaData.
   const handleJsonUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
       const text = await file.text();
       const parsed = JSON.parse(text);
-      setJsonFile(file);
-      setAwsData(parsed); // This parsed JSON is our MetaData
-      console.log("Parsed JSON:", parsed);
+      setAwsData(parsed);
+      setValidationError("");
+      console.log("Parsed storageMetaData:", parsed);
     } catch (error) {
       console.error("Error parsing JSON file:", error);
-      alert("Invalid JSON file. Please check the format.");
+      setValidationError("Invalid JSON file. Please check the format.");
     }
   };
 
-  // Check for overlapping segments.
-  const hasOverlappingSegments = (segments) => {
-    const sortedSegments = [...segments].sort(
-      (a, b) => parseFloat(a.startTime) - parseFloat(b.startTime)
-    );
-    for (let i = 0; i < sortedSegments.length - 1; i++) {
-      const current = sortedSegments[i];
-      const next = sortedSegments[i + 1];
-      if (parseFloat(current.endTime) > parseFloat(next.startTime)) {
-        return {
-          hasOverlap: true,
-          message: `Overlap detected: Segment ${i+1} (${current.startTime}-${current.endTime}) overlaps with Segment ${i+2} (${next.startTime}-${next.endTime})`
-        };
-      }
-    }
-    return { hasOverlap: false };
-  };
-
-  // Validate individual lock segment.
-  const isValidSegment = (segment) => {
-    const start = parseFloat(segment.startTime);
-    const end = parseFloat(segment.endTime);
-    if (isNaN(start) || isNaN(end)) {
-      return { isValid: false, message: "Start and end times must be valid numbers" };
-    }
-    if (start < 0 || end < 0) {
-      return { isValid: false, message: "Start and end times cannot be negative" };
-    }
-    if (start >= end) {
-      return { isValid: false, message: "End time must be greater than start time" };
-    }
-    return { isValid: true };
-  };
-
-  // Add a new lock.
+  // Lock management functions.
   const handleAddLock = () => {
-    setLocks([...locks, { startTime: "", endTime: "" }]);
+    setLocks([...locks, { lock_type: "blackout-lock", startTime: "", endTime: "" }]);
     setValidationError("");
   };
 
-  // Update a lock.
   const handleLockChange = (index, key, value) => {
     const newLocks = [...locks];
     newLocks[index][key] = value;
@@ -77,76 +43,73 @@ export default function VideoUpload() {
     setValidationError("");
   };
 
-  // Delete a lock.
   const handleDeleteLock = (index) => {
-    const newLocks = [...locks];
-    newLocks.splice(index, 1);
+    const newLocks = locks.filter((_, idx) => idx !== index);
     setLocks(newLocks);
     setValidationError("");
   };
 
-  // Validate the locks before submission.
+  // Validate a lock segment.
+  const isValidSegment = (segment) => {
+    const start = parseFloat(segment.startTime);
+    const end = parseFloat(segment.endTime);
+    if (isNaN(start) || isNaN(end)) return false;
+    if (start < 0 || end < 0) return false;
+    if (start >= end) return false;
+    return true;
+  };
+
+  // Validate all locks.
   const validateLocks = () => {
-    if (locks.length === 0) return true;
     for (let i = 0; i < locks.length; i++) {
-      const result = isValidSegment(locks[i]);
-      if (!result.isValid) {
-        setValidationError(`Segment ${i+1}: ${result.message}`);
+      if (!isValidSegment(locks[i])) {
+        setValidationError(`Invalid lock segment at index ${i + 1}.`);
         return false;
       }
-    }
-    const overlapResult = hasOverlappingSegments(locks);
-    if (overlapResult.hasOverlap) {
-      setValidationError(overlapResult.message);
-      return false;
     }
     return true;
   };
 
+  // Handle form submission.
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!awsData) {
-      alert("Please upload a valid JSON file with AWS and video information.");
+      setValidationError("Please upload a valid JSON file for storageMetaData.");
       return;
     }
-    if (!platformId || !userId || !contentId) {
-      alert("Please fill in all required fields (Platform ID, User ID, Content ID).");
+    if (!inputVideoUrl || !lockedVideoUrl || !platformName || !userName || !contentId) {
+      setValidationError("Please fill in all required fields.");
       return;
     }
-    if (!validateLocks()) return;
-
+    if (!validateLocks()) {
+      return;
+    }
     setIsLoading(true);
-    try {
-      // Map all locks to use "blackout-lock" as lock_type.
-      const mappedLocks = locks.map(lock => ({
+    const payload = {
+      storageType,
+      storageMetaData: awsData,
+      inputVideoUrl,
+      lockedVideoUrl,
+      platformName,
+      userName,
+      contentId,
+      locks: locks.map(lock => ({
         lock_type: "blackout-lock",
-        startTime: lock.startTime,
-        endTime: lock.endTime
-      }));
-      console.log("AWS Data:", awsData);
-      // Build the payload in the expected format.
-      const payload = {
-        storage_type: storageType,
-        MetaData: awsData,
-        platformId,
-        userId,
-        contentId,
-        locks: mappedLocks,
-      };
-      console.log("Payload:", payload);
-      // Uncomment below to send the API call
+        startTime: parseFloat(lock.startTime),
+        endTime: parseFloat(lock.endTime)
+      }))
+    };
+    console.log("Payload:", payload);
+    try {
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/create-AES`,
         payload
       );
-      if (response.status !== 201) {
-        throw new Error(`Processing failed: ${response.statusText}`);
-      }
+      console.log("Response:", response.data);
       alert("Video processing completed! Lock created successfully.");
-      console.log("Server Response:", response.data);
     } catch (error) {
-      console.error("Error uploading:", error);
-      alert("Failed to process the video. Please check the console/logs.");
+      console.error("Error processing video:", error);
+      setValidationError("Error processing video. Please check the console for details.");
     } finally {
       setIsLoading(false);
     }
@@ -159,7 +122,17 @@ export default function VideoUpload() {
         <h2 style={styles.heading}>Process Video From S3</h2>
         <form onSubmit={handleSubmit} style={styles.form}>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Upload JSON File:</label>
+            <label style={styles.label}>Storage Type:</label>
+            <select
+              value={storageType}
+              onChange={(e) => setStorageType(e.target.value)}
+              style={styles.input}
+            >
+              <option value="AWS">AWS</option>
+            </select>
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Upload StorageMetaData JSON:</label>
             <input
               type="file"
               accept=".json"
@@ -168,33 +141,42 @@ export default function VideoUpload() {
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Storage Type:</label>
-            <select
-              value={storageType}
-              onChange={(e) => setStorageType(e.target.value)}
-              style={styles.input}
-            >
-              <option value="AWS">AWS</option>
-              {/* Future options can be added here */}
-            </select>
-          </div>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Platform ID:</label>
+            <label style={styles.label}>Input Video URL:</label>
             <input
               type="text"
-              placeholder="Platform ID"
-              value={platformId}
-              onChange={(e) => setPlatformId(e.target.value)}
+              value={inputVideoUrl}
+              onChange={(e) => setInputVideoUrl(e.target.value)}
+              placeholder="Enter input video URL"
               style={styles.input}
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>User ID:</label>
+            <label style={styles.label}>Locked Video URL:</label>
             <input
               type="text"
-              placeholder="User ID"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
+              value={lockedVideoUrl}
+              onChange={(e) => setLockedVideoUrl(e.target.value)}
+              placeholder="Enter locked video URL"
+              style={styles.input}
+            />
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Platform Name:</label>
+            <input
+              type="text"
+              value={platformName}
+              onChange={(e) => setPlatformName(e.target.value)}
+              placeholder="Enter platform name"
+              style={styles.input}
+            />
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>User Name:</label>
+            <input
+              type="text"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Enter user name"
               style={styles.input}
             />
           </div>
@@ -202,46 +184,46 @@ export default function VideoUpload() {
             <label style={styles.label}>Content ID:</label>
             <input
               type="text"
-              placeholder="Content ID"
               value={contentId}
               onChange={(e) => setContentId(e.target.value)}
+              placeholder="Enter content id"
               style={styles.input}
             />
           </div>
-          <h3 style={styles.subheading}>Blackout Locks</h3>
-          {validationError && (
-            <div style={styles.errorMessage}>⚠️ {validationError}</div>
-          )}
-          {locks.map((lock, index) => (
-            <div key={index} style={styles.lockContainer}>
-              <input
-                type="number"
-                placeholder="Start Time (sec)"
-                value={lock.startTime}
-                onChange={(e) => handleLockChange(index, "startTime", e.target.value)}
-                style={styles.input}
-              />
-              <input
-                type="number"
-                placeholder="End Time (sec)"
-                value={lock.endTime}
-                onChange={(e) => handleLockChange(index, "endTime", e.target.value)}
-                style={styles.input}
-              />
-              <button
-                type="button"
-                onClick={() => handleDeleteLock(index)}
-                style={styles.deleteButton}
-              >
-                🗑️
-              </button>
-            </div>
-          ))}
-          <button type="button" onClick={handleAddLock} style={styles.addButton}>
-            ➕ Add Blackout Lock
-          </button>
+          <div style={styles.formGroup}>
+            <h3 style={styles.subheading}>Blackout Locks</h3>
+            {locks.map((lock, index) => (
+              <div key={index} style={styles.lockContainer}>
+                <input
+                  type="number"
+                  placeholder="Start Time (sec)"
+                  value={lock.startTime}
+                  onChange={(e) => handleLockChange(index, "startTime", e.target.value)}
+                  style={styles.input}
+                />
+                <input
+                  type="number"
+                  placeholder="End Time (sec)"
+                  value={lock.endTime}
+                  onChange={(e) => handleLockChange(index, "endTime", e.target.value)}
+                  style={styles.input}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleDeleteLock(index)}
+                  style={styles.deleteButton}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={handleAddLock} style={styles.addButton}>
+              Add Blackout Lock
+            </button>
+          </div>
+          {validationError && <p style={styles.errorMessage}>{validationError}</p>}
           <button type="submit" style={styles.submitButton} disabled={isLoading}>
-            {isLoading ? "Processing..." : "🚀 Process Video"}
+            {isLoading ? "Processing..." : "Process Video"}
           </button>
         </form>
       </div>
@@ -264,7 +246,6 @@ const styles = {
     marginBottom: "20px",
   },
   subheading: {
-    marginTop: "30px",
     fontSize: "24px",
     marginBottom: "15px",
   },
@@ -330,4 +311,3 @@ const styles = {
     fontWeight: "bold",
   },
 };
-

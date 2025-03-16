@@ -6,17 +6,14 @@ import NavBar from "./NavBar";
 export default function ModifyLock() {
   const location = useLocation();
   const navigate = useNavigate();
-  
+
+  // Retrieve JSON data and lock details from location state.
   const { state } = location || {};
   const json = (state && state.json) || null;
   const result = (state && state.result) || null;
-  const lockJsonObject = result.lockJsonObject;
-  
-  console.log("json:", json);
-  console.log("lockJsonObject:", lockJsonObject);
+  const lockJsonObject = result ? result.lockJsonObject : null;
 
   const [contentId, setContentId] = useState("");
-  const [destinationFolder, setDestinationFolder] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,37 +21,28 @@ export default function ModifyLock() {
 
   axios.defaults.withCredentials = true;
 
-  // On mount, initialize using provided lockJsonObject and json.
+  // On mount, initialize contentId and blackout locks from lockJsonObject.
   useEffect(() => {
     if (json && lockJsonObject) {
-      // Use contentId from lockJsonObject.
-      setContentId(lockJsonObject.contentid || lockJsonObject.contentId);
-      // Compute destinationFolder using awsDestinationFolder (or folderPrefix) from json.
-      const baseFolder = json.awsDestinationFolder
-        ? (json.awsDestinationFolder.endsWith('/')
-            ? json.awsDestinationFolder
-            : json.awsDestinationFolder + '/')
-        : ((json.folderPrefix || json.MetaData?.folderPrefix || "").endsWith('/')
-            ? (json.folderPrefix || json.MetaData?.folderPrefix || "")
-            : (json.folderPrefix || json.MetaData?.folderPrefix || "") + '/');
-      setDestinationFolder(baseFolder + (lockJsonObject.contentid || lockJsonObject.contentId) + '/');
-      // Initialize blackout locks.
+      setContentId(lockJsonObject.contentId);
       const existingLocks = lockJsonObject.locks || [];
       setBlackoutLocks(
-        existingLocks.map(b => ({
-          startTime: b.starttime.toString(),
-          endTime: b.endtime.toString()
+        existingLocks.map(lock => ({
+          startTime: lock.starttime.toString(),
+          endTime: lock.endtime.toString()
         }))
       );
       setMessage("Lock details loaded.");
-    }else {
+    } else {
       setMessage("Missing AWS data or lock details. Please navigate from the video list.");
     }
   }, [json, lockJsonObject]);
 
   // Validation functions.
   const hasOverlappingSegments = (segments) => {
-    const sorted = [...segments].sort((a, b) => parseFloat(a.startTime) - parseFloat(b.startTime));
+    const sorted = [...segments].sort(
+      (a, b) => parseFloat(a.startTime) - parseFloat(b.startTime)
+    );
     for (let i = 0; i < sorted.length - 1; i++) {
       if (parseFloat(sorted[i].endTime) > parseFloat(sorted[i + 1].startTime)) {
         return {
@@ -102,9 +90,9 @@ export default function ModifyLock() {
   };
 
   const handleBlackoutLockChange = (index, field, value) => {
-    const updated = [...blackoutLocks];
-    updated[index][field] = value;
-    setBlackoutLocks(updated);
+    const updatedLocks = [...blackoutLocks];
+    updatedLocks[index][field] = value;
+    setBlackoutLocks(updatedLocks);
     setValidationError("");
   };
 
@@ -114,8 +102,8 @@ export default function ModifyLock() {
   };
 
   const handleDeleteBlackoutLock = (index) => {
-    const updated = blackoutLocks.filter((_, i) => i !== index);
-    setBlackoutLocks(updated);
+    const updatedLocks = blackoutLocks.filter((_, i) => i !== index);
+    setBlackoutLocks(updatedLocks);
     setValidationError("");
   };
 
@@ -124,43 +112,39 @@ export default function ModifyLock() {
       setMessage("Missing required JSON data or lock object.");
       return;
     }
-    
+
     if (!validateBlackoutLocks()) {
       return;
     }
-    
+
     setLoading(true);
     setMessage("Processing...");
-    
+
+    // Map the blackout locks.
     const mappedLocks = blackoutLocks.map(lock => ({
       lock_type: "blackout-lock",
       startTime: lock.startTime,
       endTime: lock.endTime
     }));
-    
-    // Format the request body.
+
+    // Build the request body.
     const requestBody = {
-      storage_type: json.storage_type,
-      MetaData: json.MetaData,
+      storageType: json.storageType,
+      storageMetaData: json.storageMetaData,
       contentId: contentId,
       lockId: result.lock_id,
-      newLocks: mappedLocks,
-      folder: destinationFolder
+      newLocks: mappedLocks
     };
-    
+
     try {
-      console.log("request body: \n\n\n")
+      console.log("Submitting modification with request body:");
       console.log(requestBody);
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/modify-AES`,
         requestBody,
         { withCredentials: true }
       );
-      
       setMessage("Modification successful! " + response.data.message);
-      
-      // Optionally redirect back to the video list.
-      // navigate("/show-videos");
     } catch (error) {
       console.error("Error submitting modification:", error);
       setMessage("Error: " + (error.response?.data?.message || error.message));
@@ -174,19 +158,13 @@ export default function ModifyLock() {
       <NavBar />
       <div style={styles.container}>
         <h1 style={styles.heading}>Modify Lock / Reprocess Video</h1>
-        
-        
         {message && <p style={styles.message}>{message}</p>}
-        
-        {/* Display content ID and destination folder */}
         {contentId && (
           <div style={styles.formGroup}>
             <h3 style={styles.subheading}>Video Details</h3>
             <p><strong>Content ID:</strong> {contentId}</p>
-            <p><strong>Destination:</strong> {destinationFolder}</p>
           </div>
         )}
-        
         {blackoutLocks.length > 0 && (
           <div style={styles.formGroup}>
             <h3 style={styles.subheading}>Blackout Locks</h3>
@@ -319,4 +297,3 @@ const styles = {
     fontWeight: "bold",
   },
 };
-

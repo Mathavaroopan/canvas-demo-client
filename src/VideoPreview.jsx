@@ -35,8 +35,8 @@ export default function VideoPreview() {
         await axios.post(
           `${import.meta.env.VITE_API_URL}/download-video`,
           {
-            storage_type: json.storage_type,
-            MetaData: json.MetaData,
+            storageType: json.storageType,
+            storageMetaData: json.storageMetaData,
             folderPrefix: prefix
           },
           { withCredentials: true }
