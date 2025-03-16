@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "./NavBar";
 
 export default function ShowVideos() {
-  const [json, setJson] = useState(null); // JSON object containing storage_type and MetaData
+  const [json, setJson] = useState(null); // Parsed JSON containing storage_type and MetaData
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -57,11 +57,12 @@ export default function ShowVideos() {
 
   // Navigate to the preview page for a given folder.
   const handlePreview = (folderUrl) => {
-    console.log("sending this" + folderUrl);
+    console.log("Previewing folder:", folderUrl);
     navigate("/preview", { state: { folderUrl, json } });
   };
 
-  // Navigate to the edit page. Extracts contentId from the folder URL by removing the folderPrefix.
+  // Navigate to the edit page.
+  // Extract contentId from folder URL using json.MetaData.folderPrefix.
   const handleEditFolder = async (folderUrl) => {
     let prefix = json.MetaData.folderPrefix || "";
     if (prefix && !prefix.endsWith("/")) {
@@ -70,12 +71,18 @@ export default function ShowVideos() {
     const contentId = folderUrl.replace(prefix, "").replace(/\/$/, "");
     try {
       const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
+        `${import.meta.env.VITE_API_URL}/get-lockId-by-contentId/${contentId}`,
         { withCredentials: true }
       );
-      if (response.data && response.data.lock) {
-        const lockJsonObject = response.data.lock.LockJsonObject;
-        navigate("/modify-videos", { state: { json, lockJsonObject } });
+      console.log("Lock ID response:", response.data);
+      if (response.data && response.data._id) {
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/get-lockjsonobject/${response.data._id}`,
+          { withCredentials: true }
+        );
+        // Expecting the result to have a lockJsonObject property.
+        const result = res.data.result;
+        navigate("/modify-videos", { state: { json, result } });
       } else {
         setErrorMsg("Lock not found for this folder.");
       }
@@ -98,12 +105,18 @@ export default function ShowVideos() {
     const contentId = folderUrl.replace(prefix, "").replace(/\/$/, "");
     try {
       const lockResponse = await axios.get(
-        `${import.meta.env.VITE_API_URL}/get-lock-by-contentid/${contentId}`,
+        `${import.meta.env.VITE_API_URL}/get-lockId-by-contentId/${contentId}`,
         { withCredentials: true }
       );
-      if (lockResponse.data && lockResponse.data.lock) {
-        const lockId = lockResponse.data.lock.LockJsonObject.lockId;
-        const payload = { json, lockId };
+      if (lockResponse.data && lockResponse.data._id) {
+        const lockId = lockResponse.data._id;
+        const payload = {
+          storage_type: json.storage_type,
+          MetaData: json.MetaData,
+          lockId,
+          folderPrefix: json.MetaData.folderPrefix,
+        };
+        console.log(payload);
         const delResponse = await axios.post(
           `${import.meta.env.VITE_API_URL}/delete-AES`,
           payload,
@@ -144,17 +157,6 @@ export default function ShowVideos() {
         </div>
 
         {errorMsg && <p style={styles.error}>{errorMsg}</p>}
-
-        {json && json.MetaData && (
-          <div style={styles.awsInfo}>
-            <p>
-              <strong>AWS Region:</strong> {json.MetaData.awsRegion}
-            </p>
-            <p>
-              <strong>Bucket Name:</strong> {json.MetaData.awsBucketName}
-            </p>
-          </div>
-        )}
 
         <button
           style={styles.buttonFetch}
@@ -234,9 +236,6 @@ const styles = {
     color: "red",
     fontWeight: "bold",
     marginTop: "10px",
-  },
-  awsInfo: {
-    marginTop: "20px",
   },
   buttonFetch: {
     padding: "10px 20px",

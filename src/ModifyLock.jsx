@@ -6,10 +6,15 @@ import NavBar from "./NavBar";
 export default function ModifyLock() {
   const location = useLocation();
   const navigate = useNavigate();
-  // Now we expect awsData and lockJsonObject to be passed via location state.
-  const { awsData, lockJsonObject } = location.state || {};
-  console.log(awsData);
-  console.log(lockJsonObject);
+  
+  const { state } = location || {};
+  const json = (state && state.json) || null;
+  const result = (state && state.result) || null;
+  const lockJsonObject = result.lockJsonObject;
+  
+  console.log("json:", json);
+  console.log("lockJsonObject:", lockJsonObject);
+
   const [contentId, setContentId] = useState("");
   const [destinationFolder, setDestinationFolder] = useState("");
   const [blackoutLocks, setBlackoutLocks] = useState([]);
@@ -19,71 +24,87 @@ export default function ModifyLock() {
 
   axios.defaults.withCredentials = true;
 
-  // On mount, use the provided lockJsonObject to initialize the component.
+  // On mount, initialize using provided lockJsonObject and json.
   useEffect(() => {
-    if (awsData && lockJsonObject) {
-      // Set contentId from the lockJsonObject.
-      setContentId(lockJsonObject.contentId);
-      // Compute destinationFolder using awsData.awsDestinationFolder if available.
-      if (awsData.folderPrefix) {
-        const baseFolder = awsData.folderPrefix.endsWith('/')
-          ? awsData.folderPrefix
-          : awsData.folderPrefix + '/';
-        setDestinationFolder(baseFolder + lockJsonObject.contentId + '/');
-      }
-      // Set blackout locks from the existing lock data.
-      const existingLocks = lockJsonObject.locks["blackout-locks"];
+    if (json && lockJsonObject) {
+      // Use contentId from lockJsonObject.
+      setContentId(lockJsonObject.contentid || lockJsonObject.contentId);
+      // Compute destinationFolder using awsDestinationFolder (or folderPrefix) from json.
+      const baseFolder = json.awsDestinationFolder
+        ? (json.awsDestinationFolder.endsWith('/')
+            ? json.awsDestinationFolder
+            : json.awsDestinationFolder + '/')
+        : ((json.folderPrefix || json.MetaData?.folderPrefix || "").endsWith('/')
+            ? (json.folderPrefix || json.MetaData?.folderPrefix || "")
+            : (json.folderPrefix || json.MetaData?.folderPrefix || "") + '/');
+      setDestinationFolder(baseFolder + (lockJsonObject.contentid || lockJsonObject.contentId) + '/');
+      // Initialize blackout locks.
+      const existingLocks = lockJsonObject.locks || [];
       setBlackoutLocks(
         existingLocks.map(b => ({
-          startTime: b.startTime,
-          endTime: b.endTime
+          startTime: b.starttime.toString(),
+          endTime: b.endtime.toString()
         }))
       );
       setMessage("Lock details loaded.");
-    } else {
+    }else {
       setMessage("Missing AWS data or lock details. Please navigate from the video list.");
     }
-  }, [awsData, lockJsonObject]);
+  }, [json, lockJsonObject]);
 
-  // Check for overlapping segments.
+  // Validation functions.
   const hasOverlappingSegments = (segments) => {
-    const sortedSegments = [...segments].sort((a, b) => parseFloat(a.startTime) - parseFloat(b.startTime));
-    for (let i = 0; i < sortedSegments.length - 1; i++) {
-      const currentSegment = sortedSegments[i];
-      const nextSegment = sortedSegments[i + 1];
-      const currentEnd = parseFloat(currentSegment.endTime);
-      const nextStart = parseFloat(nextSegment.startTime);
-      if (currentEnd > nextStart) {
+    const sorted = [...segments].sort((a, b) => parseFloat(a.startTime) - parseFloat(b.startTime));
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (parseFloat(sorted[i].endTime) > parseFloat(sorted[i + 1].startTime)) {
         return {
           hasOverlap: true,
-          message: `Overlap detected: Segment ${i + 1} (${currentSegment.startTime}-${currentSegment.endTime}) overlaps with Segment ${i + 2} (${nextSegment.startTime}-${nextSegment.endTime})`
+          message: `Overlap detected: Segment ${i + 1} overlaps with Segment ${i + 2}`
         };
       }
     }
     return { hasOverlap: false };
   };
 
-  // Validate a single segment.
   const isValidSegment = (segment) => {
-    const startTime = parseFloat(segment.startTime);
-    const endTime = parseFloat(segment.endTime);
-    if (isNaN(startTime) || isNaN(endTime)) {
-      return { isValid: false, message: "Start and end times must be valid numbers" };
+    const start = parseFloat(segment.startTime);
+    const end = parseFloat(segment.endTime);
+    if (isNaN(start) || isNaN(end)) {
+      return { isValid: false, message: "Start and end times must be numbers" };
     }
-    if (startTime < 0 || endTime < 0) {
-      return { isValid: false, message: "Start and end times cannot be negative" };
+    if (start < 0 || end < 0) {
+      return { isValid: false, message: "Times cannot be negative" };
     }
-    if (startTime >= endTime) {
+    if (start >= end) {
       return { isValid: false, message: "End time must be greater than start time" };
     }
     return { isValid: true };
   };
 
-  // Handlers for editing blackout locks.
+  const validateBlackoutLocks = () => {
+    if (blackoutLocks.length === 0) {
+      setValidationError("At least one blackout lock is required");
+      return false;
+    }
+    for (let i = 0; i < blackoutLocks.length; i++) {
+      const result = isValidSegment(blackoutLocks[i]);
+      if (!result.isValid) {
+        setValidationError(`Segment ${i + 1}: ${result.message}`);
+        return false;
+      }
+    }
+    const overlap = hasOverlappingSegments(blackoutLocks);
+    if (overlap.hasOverlap) {
+      setValidationError(overlap.message);
+      return false;
+    }
+    return true;
+  };
+
   const handleBlackoutLockChange = (index, field, value) => {
-    const updatedLocks = [...blackoutLocks];
-    updatedLocks[index][field] = value;
-    setBlackoutLocks(updatedLocks);
+    const updated = [...blackoutLocks];
+    updated[index][field] = value;
+    setBlackoutLocks(updated);
     setValidationError("");
   };
 
@@ -93,64 +114,56 @@ export default function ModifyLock() {
   };
 
   const handleDeleteBlackoutLock = (index) => {
-    const updatedLocks = blackoutLocks.filter((_, i) => i !== index);
-    setBlackoutLocks(updatedLocks);
+    const updated = blackoutLocks.filter((_, i) => i !== index);
+    setBlackoutLocks(updated);
     setValidationError("");
   };
 
-  const validateBlackoutLocks = () => {
-    if (blackoutLocks.length === 0) {
-      setValidationError("At least one blackout lock is required");
-      return false;
-    }
-    for (let i = 0; i < blackoutLocks.length; i++) {
-      const validation = isValidSegment(blackoutLocks[i]);
-      if (!validation.isValid) {
-        setValidationError(`Segment ${i + 1}: ${validation.message}`);
-        return false;
-      }
-    }
-    const overlapCheck = hasOverlappingSegments(blackoutLocks);
-    if (overlapCheck.hasOverlap) {
-      setValidationError(overlapCheck.message);
-      return false;
-    }
-    return true;
-  };
-
-  // Submit the modifications.
   const handleSubmitModification = async () => {
-    if (!contentId || !awsData || !destinationFolder) {
-      console.log(contentId);
-      console.log(awsData);
-      console.log(destinationFolder);
-      setMessage("Missing required details. Cannot submit modification.");
+    if (!json || !lockJsonObject) {
+      setMessage("Missing required JSON data or lock object.");
       return;
     }
+    
     if (!validateBlackoutLocks()) {
       return;
     }
+    
+    setLoading(true);
+    setMessage("Processing...");
+    
+    const mappedLocks = blackoutLocks.map(lock => ({
+      lock_type: "blackout-lock",
+      startTime: lock.startTime,
+      endTime: lock.endTime
+    }));
+    
+    // Format the request body.
+    const requestBody = {
+      storage_type: json.storage_type,
+      MetaData: json.MetaData,
+      contentId: contentId,
+      lockId: result.lock_id,
+      newLocks: mappedLocks,
+      folder: destinationFolder
+    };
+    
     try {
-      setLoading(true);
-      const payload = {
-        // Send lockId from lockJsonObject if needed in backend (or adjust accordingly)
-        lockId: lockJsonObject.lockId,
-        awsData,
-        newBlackoutLocks: blackoutLocks,
-        folder: destinationFolder
-      };
+      console.log("request body: \n\n\n")
+      console.log(requestBody);
       const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/modify-AES`,
-        payload,
+        requestBody,
         { withCredentials: true }
       );
-      if (response.data) {
-        setMessage("Lock modified successfully!");
-        console.log("Response from modify-AES:", response.data);
-      }
-    } catch (err) {
-      console.error("Error modifying lock:", err);
-      setMessage("Failed to modify lock.");
+      
+      setMessage("Modification successful! " + response.data.message);
+      
+      // Optionally redirect back to the video list.
+      // navigate("/show-videos");
+    } catch (error) {
+      console.error("Error submitting modification:", error);
+      setMessage("Error: " + (error.response?.data?.message || error.message));
     } finally {
       setLoading(false);
     }
@@ -161,7 +174,19 @@ export default function ModifyLock() {
       <NavBar />
       <div style={styles.container}>
         <h1 style={styles.heading}>Modify Lock / Reprocess Video</h1>
+        
+        
         {message && <p style={styles.message}>{message}</p>}
+        
+        {/* Display content ID and destination folder */}
+        {contentId && (
+          <div style={styles.formGroup}>
+            <h3 style={styles.subheading}>Video Details</h3>
+            <p><strong>Content ID:</strong> {contentId}</p>
+            <p><strong>Destination:</strong> {destinationFolder}</p>
+          </div>
+        )}
+        
         {blackoutLocks.length > 0 && (
           <div style={styles.formGroup}>
             <h3 style={styles.subheading}>Blackout Locks</h3>
@@ -294,3 +319,4 @@ const styles = {
     fontWeight: "bold",
   },
 };
+

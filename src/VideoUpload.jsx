@@ -135,15 +135,15 @@ export default function VideoUpload() {
       };
       console.log("Payload:", payload);
       // Uncomment below to send the API call
-      // const response = await axios.post(
-      //   `${import.meta.env.VITE_API_URL}/create-AES`,
-      //   payload
-      // );
-      // if (response.status !== 201) {
-      //   throw new Error(`Processing failed: ${response.statusText}`);
-      // }
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL}/create-AES`,
+        payload
+      );
+      if (response.status !== 201) {
+        throw new Error(`Processing failed: ${response.statusText}`);
+      }
       alert("Video processing completed! Lock created successfully.");
-      // console.log("Server Response:", response.data);
+      console.log("Server Response:", response.data);
     } catch (error) {
       console.error("Error uploading:", error);
       alert("Failed to process the video. Please check the console/logs.");

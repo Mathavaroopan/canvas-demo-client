@@ -30,12 +30,13 @@ export default function VideoPreview() {
           prefix += "/";
         }
 
-        // Call a new server endpoint: POST /download-folder-from-json
+        // Call a new server endpoint: POST /download-folder
         // passing the user AWS creds + the chosen prefix
         await axios.post(
           `${import.meta.env.VITE_API_URL}/download-video`,
           {
-            json,
+            storage_type: json.storage_type,
+            MetaData: json.MetaData,
             folderPrefix: prefix
           },
           { withCredentials: true }
