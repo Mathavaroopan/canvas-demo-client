@@ -45,7 +45,7 @@ export default function VideoPreview() {
         // If the server downloads successfully, 
         // the local Express static path now has `output.m3u8` and `blackout.m3u8`.
         setOriginalUrl(`${import.meta.env.VITE_API_URL}/output.m3u8`);
-        setBlackoutUrl(`${import.meta.env.VITE_API_URL}/blackout.m3u8`);
+        setBlackoutUrl(`${import.meta.env.VITE_API_URL}/some-name.m3u8`);
         setDownloadStatus("Download complete. Preview ready!");
         setPreviewReady(true);
 

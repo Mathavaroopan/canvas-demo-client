@@ -9,7 +9,7 @@ export default function Home() {
     <div style={styles.container}>
       <NavBar />
       <div style={styles.content}>
-        <h1 style={styles.heading}>Welcome to Video Locker</h1>
+        <h1 style={styles.heading}>Canvas Space</h1>
         <p style={styles.subheading}>Create and preview your processed videos.</p>
         <div style={styles.buttonContainer}>
           <button style={styles.button} onClick={() => navigate("/create-video")}>
