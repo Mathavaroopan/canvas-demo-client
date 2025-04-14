@@ -6,158 +6,187 @@ const SegmentPlay = () => {
   const playerRef = useRef(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [totalDuration, setTotalDuration] = useState(0);
+  const [showNameForm, setShowNameForm] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [blackoutSegments, setBlackoutSegments] = useState([]);
+  const [nextSegmentToPlay, setNextSegmentToPlay] = useState(null);
 
-  const totalSegments = 12;
   const baseUrl = 'http://localhost:3000';
-  const getSegmentUrl = (index) => `${baseUrl}/1-min${index}.ts`;
-
-  const loadSegment = async (index) => {
-    if (index >= totalSegments) {
-      console.log('All segments played');
-      setIsPlaying(false);
-      return;
-    }
-
-    if (!mpegts.isSupported()) {
-      setError('MPEG-TS playback not supported in this browser');
-      return;
-    }
-
-    try {
-      // Clean up previous player
-      if (playerRef.current) {
-        playerRef.current.pause();
-        playerRef.current.unload();
-        playerRef.current.detachMediaElement();
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
-
-      // Create new configuration
-      const config = {
-        type: 'mse',  // Use Media Source Extensions
-        isLive: false,
-        url: getSegmentUrl(index),
-        hasAudio: true,
-        hasVideo: true,
-      };
-
-      const player = mpegts.createPlayer(config);
-      player.attachMediaElement(videoRef.current);
-      
-      player.on(mpegts.Events.ERROR, (err) => {
-        console.error('Player error:', err);
-        if (err === mpegts.ErrorTypes.NETWORK_ERROR) {
-          setError(`Network error loading segment ${index}`);
-        } else if (err === mpegts.ErrorTypes.MEDIA_ERROR) {
-          setError(`Media error in segment ${index}`);
-        } else {
-          setError(`Error with segment ${index}: ${err.message}`);
+  
+  // Calculate total duration from m3u8 file and identify blackout segments
+  useEffect(() => {
+    fetch(`${baseUrl}/some-name.m3u8`)
+      .then(response => response.text())
+      .then(text => {
+        const lines = text.split('\n');
+        let total = 0;
+        const blackouts = [];
+        let segmentIndex = 0;
+        
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith('#EXTINF:')) {
+            const duration = parseFloat(lines[i].substring(8).split(',')[0]);
+            total += duration;
+            
+            // Check if next line contains blackout segment
+            if (lines[i+1]?.includes('blackout_')) {
+              blackouts.push(segmentIndex);
+            }
+            segmentIndex++;
+          }
         }
-      });
+        
+        setTotalDuration(total);
+        setBlackoutSegments(blackouts);
+        loadSegment(0); // Start with first segment
+      })
+      .catch(err => setError(`Failed to load manifest: ${err.message}`));
+  }, []);
 
-      player.on(mpegts.Events.MEDIA_INFO, (mediaInfo) => {
-        console.log('Media info:', mediaInfo);
+  // Set video duration property to show full duration in seekbar
+  useEffect(() => {
+    if (videoRef.current && totalDuration > 0) {
+      Object.defineProperty(videoRef.current, 'duration', {
+        writable: true,
+        value: totalDuration
       });
+    }
+  }, [totalDuration, videoRef.current]);
 
-      // Wait for loading to complete
-      await new Promise((resolve, reject) => {
-        player.on(mpegts.Events.LOADING_COMPLETE, resolve);
-        player.on(mpegts.Events.ERROR, reject);
-        player.load();
-      });
+  // Load and play a specific segment
+  const loadSegment = (index, isBlackout = false) => {
+    if (playerRef.current) {
+      playerRef.current.destroy();
+    }
 
-      // Start playback
-      await videoRef.current.play();
-      playerRef.current = player;
+    const prefix = isBlackout ? 'blackout_00' : 'segment_00';
+    const url = `${baseUrl}/${prefix}${index}.ts`;
+    
+    const player = mpegts.createPlayer({
+      type: 'mse',
+      isLive: false,
+      url: url,
+      hasAudio: true,
+      hasVideo: true,
+    });
+    
+    player.attachMediaElement(videoRef.current);
+    player.on(mpegts.Events.ERROR, err => {
+      setError(`Error with segment ${index}: ${err.message}`);
+    });
+    
+    player.on(mpegts.Events.LOADING_COMPLETE, () => {
+      videoRef.current.play();
       setCurrentIndex(index);
-      setError(null);
-      setIsPlaying(true);
+    });
+    
+    player.load();
+    playerRef.current = player;
+  };
 
-    } catch (err) {
-      console.error('Segment load error:', err);
-      setError(`Failed to load segment ${index}: ${err.message}`);
-      setIsPlaying(false);
+  // Monitor video playback to handle segment transitions
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    
+    const handleEnded = () => {
+      const nextIndex = currentIndex + 1;
       
-      // Try loading next segment if current fails
-      if (index < totalSegments - 1) {
-        setTimeout(() => loadSegment(index + 1), 1000);
+      // Check if next segment is a blackout segment
+      if (blackoutSegments.includes(nextIndex)) {
+        setNextSegmentToPlay(nextIndex);
+        setShowNameForm(true);
+      } else {
+        loadSegment(nextIndex);
       }
+    };
+    
+    video.addEventListener('ended', handleEnded);
+    return () => video.removeEventListener('ended', handleEnded);
+  }, [currentIndex, blackoutSegments]);
+
+  // Handle name form submission
+  const handleNameSubmit = (e) => {
+    e.preventDefault();
+    if (userName.trim() === '') return;
+    
+    setShowNameForm(false);
+    if (nextSegmentToPlay !== null) {
+      loadSegment(nextSegmentToPlay, true); // Load blackout version
+      setNextSegmentToPlay(null);
     }
   };
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !isPlaying) return;
-
-    const handleTimeUpdate = () => {
-      if (!video.duration || currentIndex >= totalSegments - 1) return;
-      
-      const timeLeft = video.duration - video.currentTime;
-      if (timeLeft <= 0.5) {
-        loadSegment(currentIndex + 1);
-      }
-    };
-
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    return () => {
-      video.removeEventListener('timeupdate', handleTimeUpdate);
-    };
-  }, [currentIndex, isPlaying]);
-
-  useEffect(() => {
-    loadSegment(0);
-    
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
-      }
-    };
-  }, []);
+  // Format time (mm:ss)
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', position: 'relative' }}>
       <h2>Segment Player</h2>
       {error && (
-        <div style={{ 
-          color: 'red', 
-          margin: '10px 0',
-          padding: '10px',
-          background: '#ffeeee',
-          borderRadius: '4px'
-        }}>
+        <div style={{ color: 'red', padding: '10px', background: '#ffeeee', borderRadius: '4px' }}>
           Error: {error}
         </div>
       )}
-      <video
-        ref={videoRef}
-        controls
-        style={{ 
-          width: '100%', 
-          background: '#000',
-          marginBottom: '10px'
-        }}
-      />
-      <div style={{ marginTop: '10px' }}>
+      
+      <div style={{ position: 'relative' }}>
+        <video
+          ref={videoRef}
+          controls
+          style={{ width: '100%', background: '#000' }}
+        />
+      </div>
+      
+      <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
         <button 
           onClick={() => loadSegment(0)}
-          style={{
-            padding: '8px 16px',
-            marginRight: '10px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
+          style={{ padding: '8px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px' }}
         >
           Restart
         </button>
         <span>
-          Segment {currentIndex + 1} of {totalSegments}
+          Segment {currentIndex + 1} of 12 | Total Duration: {formatTime(totalDuration)}
         </span>
       </div>
+
+      {/* Name submission form for blackout segments */}
+      {showNameForm && (
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          color: 'white',
+          zIndex: 100,
+          padding: '20px'
+        }}>
+          <h3>Please enter your name to continue watching</h3>
+          <form onSubmit={handleNameSubmit} style={{ width: '100%', maxWidth: '400px' }}>
+            <input
+              type="text"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Your name"
+              required
+              style={{ padding: '12px', width: '100%', marginBottom: '15px' }}
+            />
+            <button 
+              type="submit"
+              style={{ padding: '12px 20px', backgroundColor: '#4CAF50', color: 'white', border: 'none', width: '100%' }}
+            >
+              Submit & Continue
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };
