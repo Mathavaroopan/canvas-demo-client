@@ -113,7 +113,18 @@ const SegmentPlay = () => {
     
     setShowNameForm(false);
     if (nextSegmentToPlay !== null) {
-      loadSegment(nextSegmentToPlay, true); // Load blackout version
+      // Play regular segment instead of blackout
+      loadSegment(nextSegmentToPlay, false);
+      setNextSegmentToPlay(null);
+    }
+  };
+
+  // Handle cancel button click
+  const handleCancel = () => {
+    setShowNameForm(false);
+    if (nextSegmentToPlay !== null) {
+      // Play blackout segment
+      loadSegment(nextSegmentToPlay, true);
       setNextSegmentToPlay(null);
     }
   };
@@ -175,15 +186,37 @@ const SegmentPlay = () => {
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               placeholder="Your name"
-              required
               style={{ padding: '12px', width: '100%', marginBottom: '15px' }}
             />
-            <button 
-              type="submit"
-              style={{ padding: '12px 20px', backgroundColor: '#4CAF50', color: 'white', border: 'none', width: '100%' }}
-            >
-              Submit & Continue
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                type="submit"
+                style={{ 
+                  flex: 1,
+                  padding: '12px 20px', 
+                  backgroundColor: '#4CAF50', 
+                  color: 'white', 
+                  border: 'none',
+                  borderRadius: '4px'
+                }}
+              >
+                Submit & Continue
+              </button>
+              <button 
+                type="button"
+                onClick={handleCancel}
+                style={{ 
+                  flex: 1,
+                  padding: '12px 20px', 
+                  backgroundColor: '#f44336', 
+                  color: 'white', 
+                  border: 'none',
+                  borderRadius: '4px'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         </div>
       )}
